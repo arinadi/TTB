@@ -7,3 +7,4 @@ tqdm
 more-itertools
 nest_asyncio
 openai-whisper
+httpx==0.28.1
