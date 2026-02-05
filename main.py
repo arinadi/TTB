@@ -18,9 +18,10 @@ from typing import List, Optional
 # External Layouts
 # Note: These must be installed via requirements.txt
 try:
+    import utils
+    from faster_whisper import WhisperModel
     import torch
     import ffmpeg
-    import whisper
     from google import genai
     import telegram
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
@@ -469,7 +470,22 @@ async def initialize_models_background():
     global model, gemini_client
     try:
         print("⏳ [BG Task] Loading Whisper model...");
-        model = await asyncio.to_thread(whisper.load_model, Config.MODEL_SIZE, device=device)
+        # Logic for compute_type based on Config and Device
+        compute_type = "float16" if device == "cuda" else "int8"
+        if Config.USE_FP16 != 'auto':
+             if str(Config.USE_FP16).lower() == 'false':
+                 compute_type = "float32"
+        
+        print(f"   - Model: {Config.MODEL_SIZE}")
+        print(f"   - Device: {device}")
+        print(f"   - Compute Type: {compute_type}")
+
+        model = await asyncio.to_thread(
+            WhisperModel, 
+            Config.MODEL_SIZE, 
+            device=device, 
+            compute_type=compute_type
+        )
         print(f"✅ [BG Task] Whisper model '{Config.MODEL_SIZE}' loaded.")
         if GEMINI_API_KEY:
             print("⏳ [BG Task] Initializing Gemini client...")
@@ -477,7 +493,7 @@ async def initialize_models_background():
             print("✅ [BG Task] Gemini client initialized.")
 
         models_ready_event.set()
-        await send_telegram_notification(application, f"✅ *AI Models Online!*\n- Whisper: `{Config.MODEL_SIZE}`\n- Gemini: `{'Enabled' if gemini_client else 'Disabled'}`\nBot is fully operational.")
+        await send_telegram_notification(application, f"✅ *AI Models Online (Faster-Whisper)*\n- Whisper: `{Config.MODEL_SIZE}`\n- Device: `{device}`\n- Gemini: `{'Enabled' if gemini_client else 'Disabled'}`\nBot is fully operational.")
     except Exception as e:
         error_msg = f"❌ *FATAL ERROR:*\nFailed to load AI models: {e}"
         await send_telegram_notification(application, error_msg)
@@ -486,12 +502,20 @@ async def initialize_models_background():
 def run_transcription_process(job: TranscriptionJob) -> tuple[str, str]:
     """Runs the blocking Whisper transcription in a separate thread."""
     print(f"[JOB:{job.job_id}] Transcribing '{job.original_filename}'...")
-    transcribe_options = {"fp16": fp16_enabled}
-    if Config.BEAM_SIZE > 0: transcribe_options["beam_size"] = Config.BEAM_SIZE
-    result = model.transcribe(job.local_filepath, **transcribe_options)
-    formatted_text = format_transcription_with_pauses(result, Config.PAUSE_THRESHOLD)
-    print(f"[JOB:{job.job_id}] Transcription complete.")
-    return formatted_text, result.get('language', 'N/A')
+    
+    transcribe_options = {"beam_size": Config.BEAM_SIZE}
+    
+    # Run transcription
+    # faster-whisper returns a generator, so we must iterate to process
+    segments_generator, info = model.transcribe(job.local_filepath, **transcribe_options)
+    
+    # Convert generator to list to ensure full processing
+    segments = list(segments_generator)
+    
+    formatted_text = format_transcription_with_pauses(segments, Config.PAUSE_THRESHOLD)
+    print(f"[JOB:{job.job_id}] Transcription complete. Detected language: {info.language} ({info.language_probability:.2f})")
+    
+    return formatted_text, info.language if info.language else 'N/A'
 
 async def queue_processor():
     """The main worker loop that processes jobs from the queue one by one."""

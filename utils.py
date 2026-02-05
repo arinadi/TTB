@@ -34,9 +34,9 @@ def format_duration(seconds: float) -> str:
     minutes, remaining_seconds = divmod(int(seconds), 60)
     return f"{minutes}m {remaining_seconds:02d}s"
 
-def format_transcription_with_pauses(result: dict, pause_thresh: float) -> str:
-    """Formats the Whisper result with [mm:ss] timestamps at significant pauses."""
-    if "segments" not in result or not result["segments"]:
+def format_transcription_with_pauses(segments: list, pause_thresh: float) -> str:
+    """Formats the Whisper segments with [mm:ss] timestamps at significant pauses."""
+    if not segments:
         return ""
 
     def format_timestamp(seconds: float) -> str:
@@ -44,19 +44,31 @@ def format_transcription_with_pauses(result: dict, pause_thresh: float) -> str:
         secs = int(seconds % 60)
         return f"[{minutes:02d}:{secs:02d}]"
 
-    first_segment = result["segments"][0]
-    current_block = f"{format_timestamp(first_segment['start'])}\n{first_segment['text'].strip()}"
-    completed_blocks = []
-    previous_end = first_segment.get("end", first_segment['start'])
+    # Handle both object (faster-whisper) and dict (legacy) access
+    def get_attr(seg, attr):
+        return getattr(seg, attr) if hasattr(seg, attr) else seg[attr]
 
-    for segment in result["segments"][1:]:
-        start, text = segment["start"], segment["text"].strip()
+    first_segment = segments[0]
+    first_start = get_attr(first_segment, 'start')
+    first_text = get_attr(first_segment, 'text').strip()
+    
+    current_block = f"{format_timestamp(first_start)}\n{first_text}"
+    completed_blocks = []
+    
+    # Use 'end' if available, otherwise fallback to 'start' which is not ideal but safe
+    previous_end = get_attr(first_segment, 'end')
+
+    for segment in segments[1:]:
+        start = get_attr(segment, 'start')
+        text = get_attr(segment, 'text').strip()
+        
         if (start - previous_end) > pause_thresh:
             completed_blocks.append(current_block)
             current_block = f"{format_timestamp(start)}\n{text}"
         else:
             current_block += " " + text
-        previous_end = segment.get("end", start)
+        
+        previous_end = get_attr(segment, 'end')
 
     completed_blocks.append(current_block)
     return "\n\n".join(completed_blocks)
