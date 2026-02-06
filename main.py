@@ -138,7 +138,7 @@ models_ready_event = asyncio.Event()
 def get_runtime() -> str:
     """Calculates and formats the total runtime since INIT_START."""
     return format_duration(time.time() - INIT_START)
-    
+
 @dataclass
 class TranscriptionJob:
     """A data class to hold all information about a single transcription job."""
@@ -213,6 +213,7 @@ class IdleMonitor:
             if self.shutdown_imminent or not Config.ENABLE_IDLE_MONITOR:
                 continue
 
+            if self.job_manager.is_idle():
                 if self.idle_since is None:
                     self.idle_since = time.time()
                     print(f"[{get_runtime()}] [IDLE_MONITOR] Bot is now idle. Starting timer.")
