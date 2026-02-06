@@ -8,11 +8,12 @@ async def summarize_text(transcript: str, gemini_client) -> str:
 
     prompt = (
         "Anda adalah AI ahli peringkas. "
-        "Ringkas transkrip berikut ke dalam Bahasa Indonesia dengan format poin-poin yang ringkas dan jelas.\n\n"
+        "Ringkas transkrip berikut ke dalam Bahasa Indonesia dengan format Plain Text (tanpa markdown, tanpa bold/italic).\n\n"
         "Fokus pada:\n"
         "- Ide utama atau topik sentral.\n"
         "- Kesimpulan atau poin-poin penting yang disampaikan.\n"
         "- Jika ada, sebutkan juga keputusan atau tugas (action items) yang jelas.\n\n"
+        "Gunakan format poin-poin sederhana (- poin 1, - poin 2) agar mudah dibaca.\n\n"
         "--- TRANSKRIP ---\n"
         f"```\n{transcript}\n```"
     )

@@ -249,7 +249,11 @@ class JobManager:
         queue_position = self.job_queue.qsize()
         model_status_note = "\n\n_(Note: AI models are still initializing...)_" if not models_ready_event.is_set() else ""
         content = (f"✅ `[ID: {job.job_id}]` File `{job.original_filename}` added to queue (Position: *#{queue_position}*).{model_status_note}")
-        await self.app.bot.send_message(job.chat_id, content, parse_mode=ParseMode.MARKDOWN, reply_to_message_id=job.message_id)
+        
+        # Add simpler cancel button
+        keyboard = [[InlineKeyboardButton("❌", callback_data=f"cancel_{job.job_id}")]]
+        
+        await self.app.bot.send_message(job.chat_id, content, parse_mode=ParseMode.MARKDOWN, reply_to_message_id=job.message_id, reply_markup=InlineKeyboardMarkup(keyboard))
         print(f"[JOB:{job.job_id}] Added to queue at position {queue_position}.")
 
     def complete_job(self, job_id: str):
@@ -620,9 +624,11 @@ async def get_status_text_and_keyboard():
         processing_status_line = ""
         bot_activity = "Idle"
 
+    uptime = format_duration(time.time() - INIT_START)
     text = (
         f"📊 *Bot Status & Health*\n\n"
         f"{processing_status_line}"
+        f"⏳ *Session Uptime:* `{uptime}`\n"
         f"*Jobs in Queue:* `{job_manager.job_queue.qsize()}`\n"
         f"*Bot Activity:* `{bot_activity}`\n"
         f"*AI Model Status:* `{'✅ Online' if models_ready_event.is_set() else '⏳ Initializing...'}`\n\n"
