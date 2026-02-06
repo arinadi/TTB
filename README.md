@@ -80,9 +80,9 @@ The easiest and recommended way is to use Google Colab.
             
         # Optimization: T4 Runtime Saving
         # Adjust these to shutdown faster when idle
-        os.environ['IDLE_SHUTDOWN_MINUTES'] = "3" # Default: 10
-        os.environ['IDLE_WARNING_MINUTES'] = "2"  # Default: 8
-        os.environ['IDLE_NOTIFY_MINUTES'] = "1"   # Default: 5
+        os.environ['IDLE_SHUTDOWN_MINUTES'] = "3" # Default: 3
+        os.environ['IDLE_WARNING_MINUTES'] = "2"  # Default: 2
+        os.environ['IDLE_NOTIFY_MINUTES'] = "1"   # Default: 1
         
     except Exception as e:
         print(f"⚠️ Warning: Could not load secrets from userdata: {e}")

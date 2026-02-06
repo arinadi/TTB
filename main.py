@@ -88,15 +88,14 @@ class Config:
     MAX_AUDIO_DURATION_MINUTES = int(os.getenv('MAX_AUDIO_DURATION_MINUTES', 90))
     
     ENABLE_IDLE_MONITOR = os.getenv('ENABLE_IDLE_MONITOR', 'True').lower() == 'true'
-    IDLE_NOTIFY_MINUTES = int(os.getenv('IDLE_NOTIFY_MINUTES', 5))
-    IDLE_WARNING_MINUTES = int(os.getenv('IDLE_WARNING_MINUTES', 8))
-    IDLE_SHUTDOWN_MINUTES = int(os.getenv('IDLE_SHUTDOWN_MINUTES', 10))
+    IDLE_NOTIFY_MINUTES = int(os.getenv('IDLE_NOTIFY_MINUTES', 1))
+    IDLE_WARNING_MINUTES = int(os.getenv('IDLE_WARNING_MINUTES', 2))
+    IDLE_SHUTDOWN_MINUTES = int(os.getenv('IDLE_SHUTDOWN_MINUTES', 3))
     
-    MAX_FILE_SIZE_MB = int(os.getenv('MAX_FILE_SIZE_MB', 20))
+    BOT_FILESIZE_LIMIT = int(os.getenv('BOT_FILESIZE_LIMIT', 20))
 
 # --- 1.3. Derived Constants ---
 MAX_DURATION_IN_SECONDS = Config.MAX_AUDIO_DURATION_MINUTES * 60
-MAX_FILE_SIZE_BYTES = Config.MAX_FILE_SIZE_MB * 1024 * 1024
 TRANSCRIPT_FILENAME_PREFIX = "TS"
 SUMMARY_FILENAME_PREFIX = "SU"
 
@@ -318,12 +317,12 @@ class FilesHandler:
 
         attachment = message.effective_attachment
 
-        if attachment.file_size and attachment.file_size > MAX_FILE_SIZE_BYTES:
+        if attachment.file_size and attachment.file_size > (Config.BOT_FILESIZE_LIMIT * 1024 * 1024):
             file_size_mb = attachment.file_size / (1024 * 1024)
             await message.reply_text(
                 f"❌ *File Too Large*\n\n"
                 f"The file `{attachment.file_name}` ({file_size_mb:.2f} MB) exceeds the bot's download limit of "
-                f"*{Config.MAX_FILE_SIZE_MB} MB*. Please send a smaller file.",
+                f"*{Config.BOT_FILESIZE_LIMIT} MB*. Please send a smaller file.",
                 parse_mode=ParseMode.MARKDOWN
             )
             return
@@ -719,7 +718,7 @@ async def main():
         f"🚀 *Bot is starting up... (Modular Version)*\n\n"
         f"*Model:* `{Config.MODEL_SIZE}` on `{device.upper()}`\n"
         f"*Idle Monitor:* `{'Enabled' if Config.ENABLE_IDLE_MONITOR else 'Disabled'}`\n"
-        f"*Bot Handle Limit:* `{Config.MAX_FILE_SIZE_MB} MB` per file.\n\n"
+        f"*Bot Handle Limit:* `{Config.BOT_FILESIZE_LIMIT} MB` per file.\n\n"
         f"ℹ️ *Usage Tips:*\n"
         f"- All audio & video formats supported by FFmpeg are accepted.\n"
         f"- For files exceeding the limit, please use a multi-part ZIP archive."
