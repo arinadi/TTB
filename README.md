@@ -17,21 +17,64 @@ Specifically designed to run on **Google Colab** (Free GPU) using the "Vibe Codi
 
 The easiest and recommended way is to use Google Colab.
 
-1.  **Open Google Colab File**:
-    Open the `colab_runner.ipynb` file in this repository, or upload it to your Google Colab.
-
-2.  **Setup Secrets**:
+1.  **Setup Secrets**:
     In Google Colab, open the **Secrets** tab (key icon 🔑 on the left sidebar) and add:
     -   `TELEGRAM_BOT_TOKEN`: Bot token from BotFather.
     -   `TELEGRAM_CHAT_ID`: Your Telegram chat ID (for security, the bot only responds to this ID).
     -   `GEMINI_API_KEY`: API Key from Google AI Studio (Optional, for summarization features).
     -   `GITHUB_TOKEN`: GitHub Personal Access Token (Optional, if this repo is Private).
 
-3.  **Enable GPU**:
+2.  **Enable GPU**:
     Ensure the Runtime type is set to **T4 GPU** (Menu: *Runtime > Change runtime type*).
 
-4.  **Run**:
-    Execute all cells in the notebook. The bot will automatically install dependencies and go online.
+3.  **Run**:
+    Copy the code block below into a single cell in your Colab notebook and run it. This script will automatically clone/update the repository, install dependencies, and start the bot.
+
+    ```python
+    import os
+    import sys
+    from google.colab import userdata
+
+    # --- CONFIGURATION ---
+    # ⚠️ REPLACE THIS WITH YOUR REPOSITORY URL IF NEEDED
+    REPO_URL = "https://github.com/arinadi/TTB.git" 
+    REPO_NAME = "TTB"
+    # ---------------------
+
+    print("🔄 Checking environment...")
+
+    try:
+        # Try to use GITHUB_TOKEN if available for private repos
+        token = userdata.get('GITHUB_TOKEN')
+        if token and "github.com" in REPO_URL:
+            REPO_URL = REPO_URL.replace("https://", f"https://{token}@")
+    except Exception:
+        pass
+
+    # 1. Clone or Update Repository
+    if not os.path.exists(REPO_NAME):
+        print(f"⏳ Cloning {REPO_NAME}...")
+        !git clone {REPO_URL}
+        %cd {REPO_NAME}
+    else:
+        print(f"⏳ Updating {REPO_NAME}...")
+        %cd {REPO_NAME}
+        !git pull
+
+    # 2. Install Dependencies
+    print("⏳ Installing dependencies...")
+    !pip install -q -r requirements.txt
+    print("✅ Dependencies installed.")
+
+    # 3. Run the Bot
+    print("🚀 Starting TTB...")
+    !python main.py
+    ```
+
+## 🧠 Vibe Coding Tips
+
+-   **Structure**: Logic is in `.py` files (`main.py`, `utils.py`) for easier Git handling and AI agent interaction. Colab is just the *runner*.
+-   **Auto-Reload**: If developing directly in Colab (modifying files locally), use `%load_ext autoreload` and `%autoreload 2` at the top of your notebook to reflect changes without restarting the runtime.
 
 ## 💻 How to Run (Local)
 
@@ -64,7 +107,6 @@ If you have your own GPU (NVIDIA) or want to run on CPU (slower):
 
 -   `main.py`: Main entry point. Contains Telegram bot logic, queue system, and model initialization.
 -   `utils.py`: Helper functions for text formatting, duration, and Gemini API wrapper.
--   `colab_runner.ipynb`: "Launcher" notebook for Google Colab.
 -   `requirements.txt`: List of required Python libraries.
 -   `TTBv1.py`: (Legacy) Old monolithic version, kept as reference.
 
