@@ -4,6 +4,14 @@
 
 Specifically designed to run on **Google Colab** (Free GPU) using the "Vibe Coding" method, where this repository acts as the *source of truth* pulled by Colab at *runtime*.
 
+## ⚡ Limits & Compatibility
+
+| Component | Type | Limit |
+| :--- | :--- | :--- |
+| **Whisper (Transcription)** | **Fully Local** (Colab GPU) | **Unlimited**. No duration or file count limits. Runs 100% offline once model is loaded. |
+| **Hugging Face** | Model Download | **Rate Limit Only**. Adding `HF_TOKEN` prevents temporary download blocks from HF servers. |
+| **Google Gemini** | Cloud API | **Free Tier Quota**. Subject to your Google API Key limits (~15 RPM, 1,500/day). |
+
 ## ✨ Key Features
 
 -   **Accurate Transcription**: Uses Whisper models (default: `large-v3`) for best results.
