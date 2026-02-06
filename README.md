@@ -31,6 +31,7 @@ The easiest and recommended way is to use Google Colab.
     -   `TELEGRAM_CHAT_ID`: Your Telegram chat ID (for security, the bot only responds to this ID).
     -   `GEMINI_API_KEY`: API Key from Google AI Studio (Optional, for summarization features).
     -   `GITHUB_TOKEN`: GitHub Personal Access Token (Optional, if this repo is Private).
+    -   `HF_TOKEN`: Hugging Face Token (Optional, prevents model download rate limits).
 
 2.  **Enable GPU**:
     Ensure the Runtime type is set to **T4 GPU** (Menu: *Runtime > Change runtime type*).
