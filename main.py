@@ -15,6 +15,11 @@ import zipfile
 from dataclasses import dataclass, field
 from typing import List, Optional
 
+# --- Global Initialization Timing ---
+# This tries to get the start time from Colab's README environment variable.
+# If running locally (variable missing), it falls back to current time.
+INIT_START = float(os.getenv('INIT_START', time.time()))
+
 # External Layouts
 # Note: These must be installed via requirements.txt
 try:
@@ -170,6 +175,7 @@ class IdleMonitor:
         self.idle_since: Optional[float] = None
         self.shutdown_imminent = False
         self.warnings_sent = {'notify': False, 'warning': False}
+        self.last_extend_time = 0
         self._task: Optional[asyncio.Task] = None
         print("✅ IdleMonitor initialized.")
 
@@ -220,7 +226,8 @@ class IdleMonitor:
                     self.warnings_sent['warning'] = True
                 elif idle_duration_minutes >= Config.IDLE_NOTIFY_MINUTES and not self.warnings_sent['notify']:
                     notify_msg = f"ℹ️ *IDLE NOTIFICATION:*\nBot is currently idle."
-                    await send_telegram_notification(self.app, notify_msg)
+                    keyboard = [[InlineKeyboardButton("⏳ Extend Timer (+5 min)", callback_data="extend_idle")]]
+                    await self.app.bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=notify_msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.MARKDOWN)
                     self.warnings_sent['notify'] = True
             else:
                 self.reset()
@@ -468,7 +475,8 @@ async def perform_shutdown(reason: str):
     print(f"🛑 SHUTDOWN INITIATED. Reason: {reason}")
     try:
         if application:
-            await send_telegram_notification(application, f"🔌 *Bot is shutting down.*\nReason: {reason}")
+            total_runtime = format_duration(time.time() - INIT_START)
+            await send_telegram_notification(application, f"🔌 *Bot is shutting down.*\nReason: {reason}\nRuntime: `{total_runtime}`")
             print("✅ Shutdown notification sent.")
     except Exception as e:
         print(f"⚠️ Could not send final notification, but shutting down anyway: {e}", file=sys.stderr)
@@ -504,7 +512,8 @@ async def initialize_models_background():
             print("✅ [BG Task] Gemini client initialized.")
 
         models_ready_event.set()
-        await send_telegram_notification(application, f"✅ *AI Models Online (Faster-Whisper)*\n- Whisper: `{Config.MODEL_SIZE}`\n- Device: `{device}`\n- Gemini: `{'Enabled' if gemini_client else 'Disabled'}`\nBot is fully operational.")
+        time_to_ready = format_duration(time.time() - INIT_START)
+        await send_telegram_notification(application, f"✅ *AI Models Online (Faster-Whisper)*\n- Reference Init: `{time_to_ready}`\n- Whisper: `{Config.MODEL_SIZE}`\n- Device: `{device}`\n- Gemini: `{'Enabled' if gemini_client else 'Disabled'}`\nBot is fully operational.")
     except Exception as e:
         error_msg = f"❌ *FATAL ERROR:*\nFailed to load AI models: {e}"
         await send_telegram_notification(application, error_msg)
@@ -675,6 +684,18 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         cancelled, job_name = await job_manager.cancel_job(job_id)
         msg = f"✅ Job `{job_name}` was cancelled." if cancelled else f"❌ Could not cancel job."
         await query.edit_message_text(msg, reply_markup=None, parse_mode=ParseMode.MARKDOWN)
+    elif data == "extend_idle":
+        # Rate limit check (5 minutes = 300 seconds)
+        if time.time() - idle_monitor.last_extend_time < 300:
+             await query.answer("⏳ Please wait 5 minutes before extending again.", show_alert=True)
+             return
+        
+        if idle_monitor.extend_timer(5):
+             idle_monitor.last_extend_time = time.time()
+             new_text = f"✅ *Idle Extended*\nTimer added +5 minutes.\n_Action by {query.from_user.first_name}_"
+             await query.edit_message_text(new_text, parse_mode=ParseMode.MARKDOWN)
+        else:
+             await query.edit_message_text("ℹ️ Bot is already active, no need to extend.", parse_mode=ParseMode.MARKDOWN)
 
 # ------------------------------------------------------------------------------
 # SECTION 7: MAIN ENTRY POINT
@@ -744,7 +765,8 @@ async def main():
     )
     
     await send_telegram_notification(application, startup_message)
-    print("\n▶️ Bot is running. Send a file to the configured Telegram chat.")
+    startup_duration = format_duration(time.time() - INIT_START)
+    print(f"\n▶️ Bot is running (Startup: {startup_duration}). Send a file to the configured Telegram chat.")
     
     # Run
     await application.run_polling(allowed_updates=Update.ALL_TYPES)

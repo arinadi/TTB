@@ -43,6 +43,8 @@ The easiest and recommended way is to use Google Colab.
     # @title 🚀 Setup & Run TTB
     import os
     import sys
+    import time
+    os.environ['INIT_START'] = str(int(time.time()))
     from google.colab import userdata
 
     # --- CONFIGURATION ---
