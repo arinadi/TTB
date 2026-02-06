@@ -95,7 +95,6 @@ class Config:
     BOT_FILESIZE_LIMIT = int(os.getenv('BOT_FILESIZE_LIMIT', 20))
 
 # --- 1.3. Derived Constants ---
-MAX_DURATION_IN_SECONDS = Config.MAX_AUDIO_DURATION_MINUTES * 60
 TRANSCRIPT_FILENAME_PREFIX = "TS"
 SUMMARY_FILENAME_PREFIX = "SU"
 
@@ -287,8 +286,9 @@ class FilesHandler:
             probe = await asyncio.to_thread(ffmpeg.probe, local_path)
             duration = float(probe['format']['duration'])
 
-            if MAX_DURATION_IN_SECONDS > 0 and duration > MAX_DURATION_IN_SECONDS:
-                error_msg = f"File duration ({format_duration(duration)}) exceeds the maximum limit ({format_duration(MAX_DURATION_IN_SECONDS)})."
+            max_seconds = Config.MAX_AUDIO_DURATION_MINUTES * 60
+            if Config.MAX_AUDIO_DURATION_MINUTES > 0 and duration > max_seconds:
+                error_msg = f"File duration ({format_duration(duration)}) exceeds the maximum limit ({format_duration(max_seconds)})."
                 await message.reply_text(f"❌ Could not process `{original_filename}`. *Reason:* {error_msg}", parse_mode=ParseMode.MARKDOWN)
                 if os.path.exists(local_path): os.remove(local_path)
                 return
