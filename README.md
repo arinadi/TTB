@@ -69,13 +69,21 @@ The easiest and recommended way is to use Google Colab.
     !pip install -q -r requirements.txt
     print("✅ Dependencies installed.")
 
-    # 3. Inject Secrets into Environment (Fix for subprocess)
+    # 3. Inject Secrets & Configuration
     try:
+        # Secrets
         os.environ['TELEGRAM_BOT_TOKEN'] = userdata.get('TELEGRAM_BOT_TOKEN')
         os.environ['TELEGRAM_CHAT_ID'] = userdata.get('TELEGRAM_CHAT_ID')
         gemini_key = userdata.get('GEMINI_API_KEY')
         if gemini_key:
             os.environ['GEMINI_API_KEY'] = gemini_key
+            
+        # Optimization: T4 Runtime Saving
+        # Adjust these to shutdown faster when idle
+        os.environ['IDLE_SHUTDOWN_MINUTES'] = "3" # Default: 10
+        os.environ['IDLE_WARNING_MINUTES'] = "2"  # Default: 8
+        os.environ['IDLE_NOTIFY_MINUTES'] = "1"   # Default: 5
+        
     except Exception as e:
         print(f"⚠️ Warning: Could not load secrets from userdata: {e}")
 

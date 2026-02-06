@@ -81,18 +81,18 @@ if not GEMINI_API_KEY:
 # Hardcoded defaults for the script version. 
 # In Colab, these were widgets. Now they are constants.
 class Config:
-    MODEL_SIZE = 'large-v3'
-    USE_FP16 = 'auto' # 'auto', 'True', 'False'
-    BEAM_SIZE = 10
-    PAUSE_THRESHOLD = 0.3
-    MAX_AUDIO_DURATION_MINUTES = 90
+    MODEL_SIZE = os.getenv('MODEL_SIZE', 'large-v3')
+    USE_FP16 = os.getenv('USE_FP16', 'auto') # 'auto', 'True', 'False'
+    BEAM_SIZE = int(os.getenv('BEAM_SIZE', 10))
+    PAUSE_THRESHOLD = float(os.getenv('PAUSE_THRESHOLD', 0.3))
+    MAX_AUDIO_DURATION_MINUTES = int(os.getenv('MAX_AUDIO_DURATION_MINUTES', 90))
     
-    ENABLE_IDLE_MONITOR = True
-    IDLE_NOTIFY_MINUTES = 5
-    IDLE_WARNING_MINUTES = 8
-    IDLE_SHUTDOWN_MINUTES = 10
+    ENABLE_IDLE_MONITOR = os.getenv('ENABLE_IDLE_MONITOR', 'True').lower() == 'true'
+    IDLE_NOTIFY_MINUTES = int(os.getenv('IDLE_NOTIFY_MINUTES', 5))
+    IDLE_WARNING_MINUTES = int(os.getenv('IDLE_WARNING_MINUTES', 8))
+    IDLE_SHUTDOWN_MINUTES = int(os.getenv('IDLE_SHUTDOWN_MINUTES', 10))
     
-    MAX_FILE_SIZE_MB = 20
+    MAX_FILE_SIZE_MB = int(os.getenv('MAX_FILE_SIZE_MB', 20))
 
 # --- 1.3. Derived Constants ---
 MAX_DURATION_IN_SECONDS = Config.MAX_AUDIO_DURATION_MINUTES * 60
