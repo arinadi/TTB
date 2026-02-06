@@ -1,5 +1,5 @@
 ffmpeg-python
-python-telegram-bot==20.0a4
+python-telegram-bot
 requests
 werkzeug
 google-generativeai
@@ -7,3 +7,4 @@ tqdm
 more-itertools
 nest_asyncio
 faster-whisper
+httpx>=0.28.1

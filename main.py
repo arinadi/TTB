@@ -704,6 +704,21 @@ async def main():
     application.add_handler(CommandHandler("extend", extend_command, filters=chat_filter))
     application.add_handler(CallbackQueryHandler(button_callback))
     application.add_handler(MessageHandler(filters.ATTACHMENT & chat_filter, files_handler.handle_files))
+    
+    # Error Handler
+    async def global_error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
+        print(f"❌ Exception while handling an update: {context.error}")
+        # Notify user if possible
+        if update and isinstance(update, Update) and update.effective_message:
+            text = f"❌ *An error occurred:* `{context.error}`"
+            await update.effective_message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
+        
+        # Trigger safe shutdown
+        await perform_shutdown(f"Application Error: {context.error}")
+
+    application.add_error_handler(global_error_handler)
+
+    # Background Tasks
 
     # Background Tasks
     application.create_task(queue_processor())
