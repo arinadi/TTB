@@ -64,10 +64,22 @@ The easiest and recommended way is to use Google Colab.
 
     # 2. Install Dependencies
     print("⏳ Installing dependencies...")
+    # Show requirements.txt content
+    !cat requirements.txt
     !pip install -q -r requirements.txt
     print("✅ Dependencies installed.")
 
-    # 3. Run the Bot
+    # 3. Inject Secrets into Environment (Fix for subprocess)
+    try:
+        os.environ['TELEGRAM_BOT_TOKEN'] = userdata.get('TELEGRAM_BOT_TOKEN')
+        os.environ['TELEGRAM_CHAT_ID'] = userdata.get('TELEGRAM_CHAT_ID')
+        gemini_key = userdata.get('GEMINI_API_KEY')
+        if gemini_key:
+            os.environ['GEMINI_API_KEY'] = gemini_key
+    except Exception as e:
+        print(f"⚠️ Warning: Could not load secrets from userdata: {e}")
+
+    # 4. Run the Bot
     print("🚀 Starting TTB...")
     !python main.py
     ```

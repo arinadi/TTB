@@ -41,10 +41,18 @@ from utils import summarize_text, format_duration, format_transcription_with_pau
 try:
     # Try loading from Colab userdata first
     from google.colab import userdata, runtime
-    TELEGRAM_BOT_TOKEN = userdata.get('TELEGRAM_BOT_TOKEN')
-    TELEGRAM_CHAT_ID = userdata.get('TELEGRAM_CHAT_ID')
-    GEMINI_API_KEY = userdata.get('GEMINI_API_KEY')
     IS_COLAB = True
+    try:
+        TELEGRAM_BOT_TOKEN = userdata.get('TELEGRAM_BOT_TOKEN')
+        TELEGRAM_CHAT_ID = userdata.get('TELEGRAM_CHAT_ID')
+        GEMINI_API_KEY = userdata.get('GEMINI_API_KEY')
+    except (AttributeError, Exception):
+        # Fallback to os.environ if running as subprocess (!python main.py)
+        # where userdata might fail to access the kernel
+        TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
+        TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID')
+        GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
+
 except ImportError:
     # Fallback for local testing (Environmental Variables)
     TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
@@ -726,5 +734,18 @@ async def main():
 if __name__ == "__main__":
     try:
         asyncio.run(main())
+    except KeyboardInterrupt:
+        print("🛑 Bot stopped by user.")
     except Exception as e:
         print(f"❌ Application crashed: {e}")
+        # Attempt to notify via Telegram if possible
+        if 'application' in globals() and application:
+            try:
+                loop = asyncio.new_event_loop()
+                loop.run_until_complete(send_telegram_notification(application, f"❌ *CRASH REPORT:*\nBot crashed with error: `{e}`"))
+            except:
+                pass
+    finally:
+        if IS_COLAB:
+            print("🔌 Triggering Colab Runtime Shutdown (Error Safe-mode)...")
+            runtime.unassign()
