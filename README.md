@@ -44,8 +44,33 @@ The easiest and recommended way is to use Google Colab.
     import os
     import sys
     import time
-    os.environ['INIT_START'] = str(int(time.time()))
     from google.colab import userdata
+
+    # --- 1. Initialize & Load Secrets ---
+    os.environ['INIT_START'] = str(int(time.time()))
+    
+    try:
+        # Secrets
+        os.environ['TELEGRAM_BOT_TOKEN'] = userdata.get('TELEGRAM_BOT_TOKEN')
+        os.environ['TELEGRAM_CHAT_ID'] = userdata.get('TELEGRAM_CHAT_ID')
+        gemini_key = userdata.get('GEMINI_API_KEY')
+        if gemini_key:
+            os.environ['GEMINI_API_KEY'] = gemini_key
+            
+        # Optional: HuggingFace Token (to avoid rate limits/warnings)
+        hf_token = userdata.get('HF_TOKEN')
+        if hf_token:
+            os.environ['HF_TOKEN'] = hf_token
+            
+        # Optimization: T4 Runtime Saving
+        os.environ['IDLE_SHUTDOWN_MINUTES'] = "10" # Default: 3
+        os.environ['IDLE_WARNING_MINUTES'] = "5"  # Default: 2
+        os.environ['IDLE_NOTIFY_MINUTES'] = "1"   # Default: 1
+        
+        print("✅ Loaded Keys and Timer")
+        
+    except Exception as e:
+        print(f"⚠️ Warning: Could not load secrets from userdata: {e}")
 
     # --- CONFIGURATION ---
     # ⚠️ REPLACE THIS WITH YOUR REPOSITORY URL IF NEEDED
@@ -63,45 +88,25 @@ The easiest and recommended way is to use Google Colab.
     except Exception:
         pass
 
-    # 1. Clone or Update Repository
+    # 2. Clone or Update Repository
     if not os.path.exists(REPO_NAME):
         print(f"⏳ Cloning {REPO_NAME}...")
-        !git clone {REPO_URL}
+        !git clone --depth 1 {REPO_URL}
         %cd {REPO_NAME}
     else:
         print(f"⏳ Updating {REPO_NAME}...")
         %cd {REPO_NAME}
-        !git pull
+        !git fetch --depth 1 origin
+        !git reset --hard origin/main
+        
+    print(f"✅ Code ready ({int(time.time()) - int(os.environ['INIT_START'])}s)")
 
-    # 2. Install Dependencies
+    # 3. Install Dependencies
     print("⏳ Installing dependencies...")
     # Show requirements.txt content
     !cat requirements.txt
     !pip install -q -r requirements.txt
-    print("✅ Dependencies installed.")
-
-    # 3. Inject Secrets & Configuration
-    try:
-        # Secrets
-        os.environ['TELEGRAM_BOT_TOKEN'] = userdata.get('TELEGRAM_BOT_TOKEN')
-        os.environ['TELEGRAM_CHAT_ID'] = userdata.get('TELEGRAM_CHAT_ID')
-        gemini_key = userdata.get('GEMINI_API_KEY')
-        if gemini_key:
-            os.environ['GEMINI_API_KEY'] = gemini_key
-            
-        # Optional: HuggingFace Token (to avoid rate limits/warnings)
-        hf_token = userdata.get('HF_TOKEN')
-        if hf_token:
-            os.environ['HF_TOKEN'] = hf_token
-            
-        # Optimization: T4 Runtime Saving
-        # Adjust these to shutdown faster when idle
-        os.environ['IDLE_SHUTDOWN_MINUTES'] = "10" # Default: 3
-        os.environ['IDLE_WARNING_MINUTES'] = "5"  # Default: 2
-        os.environ['IDLE_NOTIFY_MINUTES'] = "1"   # Default: 1
-        
-    except Exception as e:
-        print(f"⚠️ Warning: Could not load secrets from userdata: {e}")
+    print(f"✅ Dependencies installed ({int(time.time()) - int(os.environ['INIT_START'])}s.")
 
     # 4. Run the Bot
     print("🚀 Starting TTB...")
