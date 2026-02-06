@@ -31,6 +31,7 @@ The easiest and recommended way is to use Google Colab.
     Copy the code block below into a single cell in your Colab notebook and run it. This script will automatically clone/update the repository, install dependencies, and start the bot.
 
     ```python
+    # @title 🚀 Setup & Run TTB
     import os
     import sys
     from google.colab import userdata
@@ -74,7 +75,6 @@ The easiest and recommended way is to use Google Colab.
 ## 🧠 Vibe Coding Tips
 
 -   **Structure**: Logic is in `.py` files (`main.py`, `utils.py`) for easier Git handling and AI agent interaction. Colab is just the *runner*.
--   **Auto-Reload**: If developing directly in Colab (modifying files locally), use `%load_ext autoreload` and `%autoreload 2` at the top of your notebook to reflect changes without restarting the runtime.
 
 ## 💻 How to Run (Local)
 
