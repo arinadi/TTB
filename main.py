@@ -46,6 +46,10 @@ try:
         TELEGRAM_BOT_TOKEN = userdata.get('TELEGRAM_BOT_TOKEN')
         TELEGRAM_CHAT_ID = userdata.get('TELEGRAM_CHAT_ID')
         GEMINI_API_KEY = userdata.get('GEMINI_API_KEY')
+        
+        # Optional: HF_TOKEN
+        hf_token = userdata.get('HF_TOKEN')
+        if hf_token: os.environ['HF_TOKEN'] = hf_token
     except (AttributeError, Exception):
         # Fallback to os.environ if running as subprocess (!python main.py)
         # where userdata might fail to access the kernel

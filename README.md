@@ -78,6 +78,11 @@ The easiest and recommended way is to use Google Colab.
         if gemini_key:
             os.environ['GEMINI_API_KEY'] = gemini_key
             
+        # Optional: HuggingFace Token (to avoid rate limits/warnings)
+        hf_token = userdata.get('HF_TOKEN')
+        if hf_token:
+            os.environ['HF_TOKEN'] = hf_token
+            
         # Optimization: T4 Runtime Saving
         # Adjust these to shutdown faster when idle
         os.environ['IDLE_SHUTDOWN_MINUTES'] = "10" # Default: 3
