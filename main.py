@@ -135,6 +135,10 @@ models_ready_event = asyncio.Event()
 # SECTION 4: DATA CLASSES & MANAGERS
 # ------------------------------------------------------------------------------
 
+def get_runtime() -> str:
+    """Calculates and formats the total runtime since INIT_START."""
+    return format_duration(time.time() - INIT_START)
+    
 @dataclass
 class TranscriptionJob:
     """A data class to hold all information about a single transcription job."""
@@ -178,6 +182,7 @@ class IdleMonitor:
         self.last_extend_time = 0
         self._task: Optional[asyncio.Task] = None
         print("✅ IdleMonitor initialized.")
+        print(f"DEBUG: Idle Config -> Notify: {Config.IDLE_NOTIFY_MINUTES}m, Warn: {Config.IDLE_WARNING_MINUTES}m, Shutdown: {Config.IDLE_SHUTDOWN_MINUTES}m")
 
     def start(self):
         if not self._task or self._task.done():
@@ -208,10 +213,9 @@ class IdleMonitor:
             if self.shutdown_imminent or not Config.ENABLE_IDLE_MONITOR:
                 continue
 
-            if self.job_manager.is_idle():
                 if self.idle_since is None:
                     self.idle_since = time.time()
-                    print(f"[IDLE_MONITOR] Bot is now idle. Starting timer.")
+                    print(f"[{get_runtime()}] [IDLE_MONITOR] Bot is now idle. Starting timer.")
                     continue
 
                 idle_duration_minutes = (time.time() - self.idle_since) / 60
@@ -476,16 +480,16 @@ async def perform_shutdown(reason: str):
     global SHUTDOWN_IN_PROGRESS
     if SHUTDOWN_IN_PROGRESS: return
     SHUTDOWN_IN_PROGRESS = True
-    print(f"🛑 SHUTDOWN INITIATED. Reason: {reason}")
+    runtime = get_runtime()
+    print(f"[{runtime}] 🛑 SHUTDOWN INITIATED. Reason: {reason}")
     try:
         if application:
-            total_runtime = format_duration(time.time() - INIT_START)
-            await send_telegram_notification(application, f"🔌 *Bot is shutting down.*\nReason: {reason}\nRuntime: `{total_runtime}`")
-            print("✅ Shutdown notification sent.")
+            await send_telegram_notification(application, f"🔌 *Bot is shutting down.*\nReason: {reason}\nRuntime: `{runtime}`")
+            print(f"[{runtime}] ✅ Shutdown notification sent.")
     except Exception as e:
         print(f"⚠️ Could not send final notification, but shutting down anyway: {e}", file=sys.stderr)
     finally:
-        print("🔌 Terminating Runtime...")
+        print(f"[{runtime}] 🔌 Terminating Runtime...")
         runtime.unassign()
 
 async def initialize_models_background():
@@ -516,8 +520,7 @@ async def initialize_models_background():
             print("✅ [BG Task] Gemini client initialized.")
 
         models_ready_event.set()
-        time_to_ready = format_duration(time.time() - INIT_START)
-        await send_telegram_notification(application, f"✅ *AI Models Online (Faster-Whisper)*\n- Reference Init: `{time_to_ready}`\n- Whisper: `{Config.MODEL_SIZE}`\n- Device: `{device}`\n- Gemini: `{'Enabled' if gemini_client else 'Disabled'}`\nBot is fully operational.")
+        await send_telegram_notification(application, f"✅ *AI Models Online (Faster-Whisper)*\n- Reference Init: `{get_runtime()}`\n- Whisper: `{Config.MODEL_SIZE}`\n- Device: `{device}`\n- Gemini: `{'Enabled' if gemini_client else 'Disabled'}`\nBot is fully operational.")
     except Exception as e:
         error_msg = f"❌ *FATAL ERROR:*\nFailed to load AI models: {e}"
         await send_telegram_notification(application, error_msg)
@@ -624,11 +627,10 @@ async def get_status_text_and_keyboard():
         processing_status_line = ""
         bot_activity = "Idle"
 
-    uptime = format_duration(time.time() - INIT_START)
     text = (
         f"📊 *Bot Status & Health*\n\n"
         f"{processing_status_line}"
-        f"⏳ *Session Uptime:* `{uptime}`\n"
+        f"⏳ *Session Uptime:* `{get_runtime()}`\n"
         f"*Jobs in Queue:* `{job_manager.job_queue.qsize()}`\n"
         f"*Bot Activity:* `{bot_activity}`\n"
         f"*AI Model Status:* `{'✅ Online' if models_ready_event.is_set() else '⏳ Initializing...'}`\n\n"
@@ -771,8 +773,7 @@ async def main():
     )
     
     await send_telegram_notification(application, startup_message)
-    startup_duration = format_duration(time.time() - INIT_START)
-    print(f"\n▶️ Bot is running (Startup: {startup_duration}). Send a file to the configured Telegram chat.")
+    print(f"\n▶️ Bot is running (Startup: {get_runtime()}). Send a file to the configured Telegram chat.")
     
     # Run
     await application.run_polling(allowed_updates=Update.ALL_TYPES)
