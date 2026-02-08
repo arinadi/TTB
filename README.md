@@ -101,11 +101,9 @@ The easiest and recommended way is to use Google Colab.
         
     print(f"✅ Code ready ({int(time.time()) - int(os.environ['INIT_START'])}s)")
 
-    # 3. Install Dependencies
-    print("⏳ Installing dependencies...")
-    # Show requirements.txt content
-    !cat requirements.txt
-    !pip install -q -r requirements.txt
+    # 3. Install Dependencies (using uv for speed)
+    print("⏳ Installing dependencies with uv...")
+    !bash setup_uv.sh
     print(f"✅ Dependencies installed ({int(time.time()) - int(os.environ['INIT_START'])}s.")
 
     # 4. Run the Bot
@@ -148,6 +146,8 @@ If you have your own GPU (NVIDIA) or want to run on CPU (slower):
 
 -   `main.py`: Main entry point. Contains Telegram bot logic, queue system, and model initialization.
 -   `utils.py`: Helper functions for text formatting, duration, and Gemini API wrapper.
+-   `gradio_handler.py`: Optional Gradio web interface for transcription.
+-   `setup_uv.sh`: Fast dependency installer using uv (~30s vs 2+ min with pip).
 -   `requirements.txt`: List of required Python libraries.
 -   `TTBv1.py`: (Legacy) Old monolithic version, kept as reference.
 
@@ -157,3 +157,19 @@ You can change default settings inside `main.py` (`Config` class):
 -   `MODEL_SIZE`: `large-v3`, `medium`, `small`, etc.
 -   `MAX_AUDIO_DURATION_MINUTES`: Audio duration limit (default: 90 minutes).
 -   `ENABLE_IDLE_MONITOR`: Automatically turn off Colab runtime if idle (saves resources).
+
+## 🔄 Network Resilience
+
+Bot ini memiliki error handling yang robust untuk menangani masalah koneksi di Colab:
+
+-   **Auto-Retry**: Transient network errors akan di-retry otomatis (max 2x) tanpa shutdown.
+-   **Extended Timeouts**: `read_timeout=60s`, `write_timeout=30s`, `pool_timeout=30s`.
+-   **Connection Pool**: Pool size 8 untuk koneksi yang lebih stabil.
+
+**Errors yang ditangani (tidak trigger shutdown):**
+| Kategori | Error Types |
+| :--- | :--- |
+| **httpx** | `ReadError`, `WriteError`, `ConnectError`, `ConnectTimeout`, `ReadTimeout`, `WriteTimeout`, `PoolTimeout`, `CloseError`, `ProxyError`, `ProtocolError` |
+| **SSL** | `SSLError`, `SSLCertVerificationError` |
+| **Telegram** | `TimeoutException`, `NetworkError`, `TimedOut`, `RetryAfter` |
+| **General** | `ConnectionError`, `ConnectionResetError`, `ConnectionRefusedError`, `BrokenPipeError`, `OSError` |

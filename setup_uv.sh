@@ -9,6 +9,7 @@ echo "⏳ Installing uv package manager..."
 pip install uv -q
 
 echo "⏳ Installing dependencies with uv..."
+cat requirements.txt
 uv pip install -r requirements.txt --system
 
 echo "✅ Installation complete!"
