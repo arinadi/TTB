@@ -42,6 +42,15 @@ except ImportError as e:
 # Local Imports
 from utils import summarize_text, format_duration, format_transcription_with_pauses
 
+# Optional: Gradio for large file uploads
+try:
+    import gradio_handler
+    GRADIO_AVAILABLE = True
+except ImportError:
+    GRADIO_AVAILABLE = False
+    print("⚠️ gradio_handler not available. Web interface disabled.")
+
+
 # --- 1.1. Load Core Secrets ---
 try:
     # Try loading from Colab userdata first
@@ -481,16 +490,16 @@ async def perform_shutdown(reason: str):
     global SHUTDOWN_IN_PROGRESS
     if SHUTDOWN_IN_PROGRESS: return
     SHUTDOWN_IN_PROGRESS = True
-    runtime = get_runtime()
-    print(f"[{runtime}] 🛑 SHUTDOWN INITIATED. Reason: {reason}")
+    uptime_str = get_runtime()
+    print(f"[{uptime_str}] 🛑 SHUTDOWN INITIATED. Reason: {reason}")
     try:
         if application:
-            await send_telegram_notification(application, f"🔌 *Bot is shutting down.*\nReason: {reason}\nRuntime: `{runtime}`")
-            print(f"[{runtime}] ✅ Shutdown notification sent.")
+            await send_telegram_notification(application, f"🔌 *Bot is shutting down.*\nReason: {reason}\nRuntime: `{uptime_str}`")
+            print(f"[{uptime_str}] ✅ Shutdown notification sent.")
     except Exception as e:
         print(f"⚠️ Could not send final notification, but shutting down anyway: {e}", file=sys.stderr)
     finally:
-        print(f"[{runtime}] 🔌 Terminating Runtime...")
+        print(f"[{uptime_str}] 🔌 Terminating Runtime...")
         runtime.unassign()
 
 async def initialize_models_background():
@@ -526,6 +535,30 @@ async def initialize_models_background():
         error_msg = f"❌ *FATAL ERROR:*\nFailed to load AI models: {e}"
         await send_telegram_notification(application, error_msg)
         await perform_shutdown("AI Model Loading Failed")
+
+async def initialize_gradio_background():
+    """Launches Gradio web server in background and notifies Telegram with URL."""
+    if not GRADIO_AVAILABLE:
+        print("⚠️ [BG Task] Gradio not available, skipping web interface.")
+        return
+    
+    try:
+        print("⏳ [BG Task] Starting Gradio web interface...")
+        gradio_handler.set_dependencies(job_manager, UPLOAD_FOLDER)
+        public_url = await gradio_handler.launch_gradio_async(share=True)
+        
+        if public_url:
+            await send_telegram_notification(
+                application,
+                f"🌐 *Web Interface Online*\n"
+                f"Upload file besar (>20MB) via:\n`{public_url}`\n\n"
+                f"_Hasil akan dikirim ke Chat ID yang diinput._"
+            )
+        else:
+            print("⚠️ [BG Task] Gradio started but no public URL available.")
+    except Exception as e:
+        print(f"⚠️ [BG Task] Failed to start Gradio: {e}")
+
 
 def run_transcription_process(job: TranscriptionJob) -> tuple[str, str]:
     """Runs the blocking Whisper transcription in a separate thread."""
@@ -758,7 +791,12 @@ async def main():
     application.create_task(queue_processor())
     application.create_task(initialize_models_background())
     
+    # Start Gradio web interface (async, like AI models)
+    if GRADIO_AVAILABLE:
+        application.create_task(initialize_gradio_background())
+    
     if Config.ENABLE_IDLE_MONITOR:
+
         idle_monitor.start()
 
     await application.initialize()
