@@ -789,8 +789,20 @@ async def main():
         error_name = type(error).__name__
         print(f"❌ Exception while handling an update: {error_name}: {error}")
         
-        # List of transient network errors that should NOT trigger shutdown
-        transient_errors = ('ReadError', 'ConnectError', 'TimeoutException', 'NetworkError', 'TimedOut')
+        # List of transient network/connection errors that should NOT trigger shutdown
+        transient_errors = (
+            # httpx errors
+            'ReadError', 'WriteError', 'ConnectError', 'ConnectTimeout', 'ReadTimeout', 'WriteTimeout',
+            'PoolTimeout', 'CloseError', 'ProxyError', 'ProtocolError', 'RemoteProtocolError',
+            'LocalProtocolError', 'UnsupportedProtocol', 'DecodingError', 
+            # SSL errors
+            'SSLError', 'SSLCertVerificationError',
+            # Telegram-bot errors  
+            'TimeoutException', 'NetworkError', 'TimedOut', 'RetryAfter', 'Forbidden',
+            # General connection
+            'ConnectionError', 'ConnectionResetError', 'ConnectionRefusedError', 'BrokenPipeError',
+            'OSError', 'IOError', 'socket.error', 'socket.timeout'
+        )
         
         if error_name in transient_errors:
             # Track retry count
