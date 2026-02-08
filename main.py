@@ -748,8 +748,14 @@ async def main():
 
     print("🚀 Starting Main Application...")
 
-    # Longer timeouts
-    request = HTTPXRequest(read_timeout=60.0, connect_timeout=20.0)
+    # Longer timeouts and connection pool for network resilience
+    request = HTTPXRequest(
+        read_timeout=60.0, 
+        connect_timeout=20.0,
+        write_timeout=30.0,
+        pool_timeout=30.0,
+        connection_pool_size=8
+    )
     
     if not TELEGRAM_BOT_TOKEN:
         sys.exit("❌ FATAL: No TELEGRAM_BOT_TOKEN found. Exiting.")
@@ -772,16 +778,46 @@ async def main():
     application.add_handler(CallbackQueryHandler(button_callback))
     application.add_handler(MessageHandler(filters.ATTACHMENT & chat_filter, files_handler.handle_files))
     
-    # Error Handler
+    
+    # Error Handler with retry tracking
+    _transient_error_counts = {}  # Track consecutive transient errors
+    MAX_TRANSIENT_RETRIES = 2
+    
     async def global_error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
-        print(f"❌ Exception while handling an update: {context.error}")
-        # Notify user if possible
-        if update and isinstance(update, Update) and update.effective_message:
-            text = f"❌ *An error occurred:* `{context.error}`"
-            await update.effective_message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
+        nonlocal _transient_error_counts
+        error = context.error
+        error_name = type(error).__name__
+        print(f"❌ Exception while handling an update: {error_name}: {error}")
         
-        # Trigger safe shutdown
-        await perform_shutdown(f"Application Error: {context.error}")
+        # List of transient network errors that should NOT trigger shutdown
+        transient_errors = ('ReadError', 'ConnectError', 'TimeoutException', 'NetworkError', 'TimedOut')
+        
+        if error_name in transient_errors:
+            # Track retry count
+            _transient_error_counts[error_name] = _transient_error_counts.get(error_name, 0) + 1
+            count = _transient_error_counts[error_name]
+            
+            if count <= MAX_TRANSIENT_RETRIES:
+                print(f"⚠️ [ERROR_HANDLER] Transient error {error_name} ({count}/{MAX_TRANSIENT_RETRIES}) - will retry")
+                return  # Don't shutdown, let telegram-bot retry
+            else:
+                print(f"🔴 [ERROR_HANDLER] Transient error {error_name} exceeded {MAX_TRANSIENT_RETRIES} retries - network may be unstable")
+                _transient_error_counts[error_name] = 0  # Reset counter
+                return  # Still don't shutdown, but log critical warning
+        
+        # Reset counters on non-transient error
+        _transient_error_counts.clear()
+        
+        # Notify user if possible (wrapped in try-except)
+        try:
+            if update and isinstance(update, Update) and update.effective_message:
+                text = f"❌ *An error occurred:* `{error}`"
+                await update.effective_message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
+        except Exception as notify_err:
+            print(f"⚠️ [ERROR_HANDLER] Could not send error notification: {notify_err}")
+        
+        # Trigger safe shutdown only for critical errors
+        await perform_shutdown(f"Application Error: {error}")
 
     application.add_error_handler(global_error_handler)
 
