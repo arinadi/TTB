@@ -2,7 +2,7 @@ ffmpeg-python
 python-telegram-bot
 requests
 werkzeug
-google-generativeai
+google-genai
 tqdm
 more-itertools
 nest_asyncio

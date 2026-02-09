@@ -41,18 +41,33 @@ async def summarize_text(transcript: str, gemini_client) -> str:
         "--- TRANSKRIP ---\n"
         f"```\n{transcript}\n```"
     )
+    # Gemini models: primary and fallback
+    PRIMARY_MODEL = "gemini-3-flash-preview"
+    FALLBACK_MODEL = "gemini-2.5-flash"
+    
     try:
-        log("GEMINI", f"Requesting summary ({len(transcript)} chars)...")
+        log("GEMINI", f"Requesting summary ({len(transcript)} chars) with {PRIMARY_MODEL}...")
         response = await asyncio.to_thread(
             gemini_client.models.generate_content,
-            model="gemini-2.5-flash",
+            model=PRIMARY_MODEL,
             contents=prompt
         )
         log("GEMINI", f"Summary received ({len(response.text)} chars)")
         return response.text
     except Exception as e:
-        log("ERROR", f"Gemini failed: {e}")
-        return f"❌ Error generating summary: {e}"
+        log("ERROR", f"Gemini {PRIMARY_MODEL} failed: {e}")
+        log("GEMINI", f"Retrying with fallback model {FALLBACK_MODEL}...")
+        try:
+            response = await asyncio.to_thread(
+                gemini_client.models.generate_content,
+                model=FALLBACK_MODEL,
+                contents=prompt
+            )
+            log("GEMINI", f"Fallback summary received ({len(response.text)} chars)")
+            return response.text
+        except Exception as fallback_error:
+            log("ERROR", f"Gemini {FALLBACK_MODEL} also failed: {fallback_error}")
+            return f"❌ Error generating summary: {fallback_error}"
 
 def format_duration(seconds: float) -> str:
     """Converts a duration in seconds to a human-readable 'Xm XXs' format."""
