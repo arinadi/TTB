@@ -13,7 +13,8 @@ try:
     import gradio as gr
 except ImportError:
     gr = None
-    print("⚠️ WARNING: Gradio not installed. Web interface will be disabled.")
+
+from log_utils import log
 
 if TYPE_CHECKING:
     from main import JobManager, TranscriptionJob
@@ -74,10 +75,11 @@ def process_upload(file_paths: list) -> str:
         
         # Get file size for display
         file_size_mb = os.path.getsize(dest_path) / (1024 * 1024)
+        log("GRADIO", f"Received: {original_filename} ({file_size_mb:.1f}MB)")
         
         # Queue the job on the main event loop (from sync thread)
         if _main_loop is None:
-            print("[GRADIO] Error: Main event loop not set!")
+            log("ERROR", "Gradio: Main event loop not set!")
             continue
         
         asyncio.run_coroutine_threadsafe(_queue_gradio_job(dest_path, original_filename, chat_id), _main_loop)
@@ -119,10 +121,10 @@ async def _queue_gradio_job(file_path: str, filename: str, chat_id: int):
         job.author_display_name = "Web Upload"
         
         await _job_manager.add_job(job)
-        print(f"[GRADIO] Job {job.job_id} added to queue for file: {filename}")
+        log("GRADIO", f"[{job.job_id}] Queued: {filename}")
         
     except Exception as e:
-        print(f"[GRADIO] Error queuing job: {e}")
+        log("ERROR", f"Gradio queue failed: {e}")
         # Clean up file on error
         if os.path.exists(file_path):
             os.remove(file_path)
@@ -133,7 +135,7 @@ def create_gradio_interface() -> Optional["gr.Blocks"]:
     global gradio_app
     
     if gr is None:
-        print("❌ Gradio not available. Web interface disabled.")
+        log("GRADIO", "Not available (Gradio not installed)")
         return None
     
     with gr.Blocks(
@@ -246,12 +248,12 @@ async def launch_gradio_async(share: bool = True) -> Optional[str]:
             public_url = app.local_url
         
         gradio_ready_event.set()
-        print(f"✅ [BG Task] Gradio server ready: {public_url}")
+        log("GRADIO", f"Server ready: {public_url}")
         
         return public_url
         
     except Exception as e:
-        print(f"❌ [BG Task] Failed to start Gradio: {e}")
+        log("ERROR", f"Gradio launch failed: {e}")
         return None
 
 
@@ -261,6 +263,6 @@ async def shutdown_gradio():
     if gradio_app:
         try:
             gradio_app.close()
-            print("🔌 Gradio server stopped.")
+            log("GRADIO", "Server stopped")
         except Exception as e:
-            print(f"⚠️ Error stopping Gradio: {e}")
+            log("ERROR", f"Gradio shutdown: {e}")

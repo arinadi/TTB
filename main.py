@@ -41,6 +41,7 @@ except ImportError as e:
 
 # Local Imports
 from utils import summarize_text, format_duration, format_transcription_with_pauses
+from log_utils import log
 
 # Optional: Gradio for large file uploads
 try:
@@ -48,7 +49,7 @@ try:
     GRADIO_AVAILABLE = True
 except ImportError:
     GRADIO_AVAILABLE = False
-    print("⚠️ gradio_handler not available. Web interface disabled.")
+    log("INIT", "Gradio not available. Web interface disabled.")
 
 
 # --- 1.1. Load Core Secrets (from environment - set by Colab runner) ---
@@ -161,7 +162,7 @@ class TranscriptionJob:
             job.author_display_name = message.chat.title
         else:
             job.author_display_name = "Unknown"
-        print(f"[JOB:{job.job_id}] New job created for '{job.original_filename}' by {job.author_display_name}.")
+        log("JOB", f"[{job.job_id}] Created: {job.original_filename} (by {job.author_display_name})")
         return job
 
 class IdleMonitor:
@@ -183,13 +184,12 @@ class IdleMonitor:
         self.alerts_sent = {'first_alert': False, 'final_warning': False}
         self.last_extend_time = 0
         self._task: Optional[asyncio.Task] = None
-        print("✅ IdleMonitor initialized.")
-        print(f"DEBUG: Idle Config -> First Alert at {Config.IDLE_FIRST_ALERT_MINUTES}m, Final Warning at {Config.IDLE_FINAL_WARNING_MINUTES}m, Shutdown at {Config.IDLE_SHUTDOWN_MINUTES}m")
+        log("INIT", f"IdleMonitor ready (alert={Config.IDLE_FIRST_ALERT_MINUTES}m, warn={Config.IDLE_FINAL_WARNING_MINUTES}m, shutdown={Config.IDLE_SHUTDOWN_MINUTES}m)")
 
     def start(self):
         if not self._task or self._task.done():
             self._task = asyncio.create_task(self._monitor_loop())
-            print("✅ IdleMonitor task started.")
+            log("IDLE", "Monitor started")
 
     def stop(self):
         if self._task:
@@ -197,7 +197,7 @@ class IdleMonitor:
 
     def reset(self):
         if self.shutdown_on is not None:
-            print(f"[{get_runtime()}] [IDLE_MONITOR] Bot is active. Timer reset.")
+            log("IDLE", "Bot active. Timer reset.")
             self.shutdown_on = None
             self.alerts_sent = {'first_alert': False, 'final_warning': False}
 
@@ -208,7 +208,7 @@ class IdleMonitor:
             # Reset alerts so user gets them again with new timing
             self.alerts_sent = {'first_alert': False, 'final_warning': False}
             remaining = (self.shutdown_on - time.time()) / 60
-            print(f"[{get_runtime()}] [IDLE_MONITOR] Timer extended +{minutes}m. Shutdown in {remaining:.1f}m.")
+            log("IDLE", f"Extended +{minutes}m. Shutdown in {remaining:.1f}m")
             return True
         return False
 
@@ -222,7 +222,7 @@ class IdleMonitor:
             
             # Wait for job_manager to be initialized
             if self.job_manager is None:
-                print("[IDLE_MONITOR] Waiting for job_manager...")
+                log("IDLE", "Waiting for job_manager...")
                 continue
 
             try:
@@ -230,39 +230,39 @@ class IdleMonitor:
                     # First time idle - set shutdown_on (absolute time)
                     if self.shutdown_on is None:
                         self.shutdown_on = time.time() + (Config.IDLE_SHUTDOWN_MINUTES * 60)
-                        print(f"[{get_runtime()}] [IDLE_MONITOR] Bot is now idle. Shutdown in {Config.IDLE_SHUTDOWN_MINUTES}m.")
+                        log("IDLE", f"Bot idle. Shutdown in {Config.IDLE_SHUTDOWN_MINUTES}m")
 
                     # Calculate times
                     remaining_minutes = (self.shutdown_on - time.time()) / 60
                     elapsed_minutes = Config.IDLE_SHUTDOWN_MINUTES - remaining_minutes
-                    print(f"[{get_runtime()}] [IDLE_MONITOR] Elapsed: {elapsed_minutes:.1f}m, Remaining: {remaining_minutes:.1f}m")
+                    log("IDLE", f"Elapsed: {elapsed_minutes:.1f}m, Remaining: {remaining_minutes:.1f}m")
                     
                     # 1. FIRST ALERT when elapsed >= IDLE_FIRST_ALERT_MINUTES (e.g., 1 min idle)
                     if elapsed_minutes >= Config.IDLE_FIRST_ALERT_MINUTES and not self.alerts_sent['first_alert']:
-                        alert_msg = f"ℹ️ *IDLE ALERT:*\nBot is idle. Shutdown in *{int(remaining_minutes)}* minutes."
-                        keyboard = [[InlineKeyboardButton("⏳ Extend Timer (+5 min)", callback_data="extend_idle")]]
+                        alert_msg = f"⏸️ Idle. Shutdown in `{int(remaining_minutes)}m`"
+                        keyboard = [[InlineKeyboardButton("⏳ +5m", callback_data="extend_idle")]]
                         await self.app.bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=alert_msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.MARKDOWN)
                         self.alerts_sent['first_alert'] = True
-                        print(f"[{get_runtime()}] [IDLE_MONITOR] First alert sent.")
+                        log("IDLE", "First alert sent")
                     
                     # 2. FINAL WARNING when elapsed >= IDLE_FINAL_WARNING_MINUTES (e.g., 5 min idle)
                     if elapsed_minutes >= Config.IDLE_FINAL_WARNING_MINUTES and not self.alerts_sent['final_warning']:
-                        warn_msg = f"⚠️ *FINAL WARNING:*\nBot will shut down in approx. *{int(remaining_minutes)}* minutes!"
+                        warn_msg = f"⚠️ Shutdown in `{int(remaining_minutes)}m`!"
                         await send_telegram_notification(self.app, warn_msg)
                         self.alerts_sent['final_warning'] = True
-                        print(f"[{get_runtime()}] [IDLE_MONITOR] Final warning sent.")
+                        log("IDLE", "Final warning sent")
                     
                     # 3. SHUTDOWN when remaining <= 0
                     if remaining_minutes <= 0:
                         self.shutdown_imminent = True
-                        shutdown_msg = f"🔴 *AUTO SHUTDOWN:*\nBot has been idle for over *{Config.IDLE_SHUTDOWN_MINUTES}* minutes."
+                        shutdown_msg = f"🔴 Shutting down (idle {Config.IDLE_SHUTDOWN_MINUTES}m)"
                         await send_telegram_notification(self.app, shutdown_msg)
-                        print(f"[{get_runtime()}] [IDLE_MONITOR] Shutdown triggered.")
+                        log("IDLE", "Shutdown triggered")
                         await perform_shutdown("Automatic Idle Shutdown")
                 else:
                     self.reset()
             except Exception as e:
-                print(f"[{get_runtime()}] [IDLE_MONITOR] Error in loop: {e}")
+                log("ERROR", f"IdleMonitor: {e}")
 
 class JobManager:
     """Manages the queue and state of all transcription jobs."""
@@ -272,34 +272,34 @@ class JobManager:
         self.job_queue = asyncio.Queue()
         self.currently_processing: Optional[TranscriptionJob] = None
         self.job_registry: dict[str, TranscriptionJob] = {}
-        print("✅ JobManager initialized.")
+        log("INIT", "JobManager ready")
 
     async def add_job(self, job: TranscriptionJob):
         self.idle_monitor.reset()
         self.job_registry[job.job_id] = job
         await self.job_queue.put(job)
         queue_position = self.job_queue.qsize()
-        model_status_note = "\n\n_(Note: AI models are still initializing...)_" if not models_ready_event.is_set() else ""
-        content = (f"✅ `[ID: {job.job_id}]` File `{job.original_filename}` added to queue (Position: *#{queue_position}*).{model_status_note}")
+        model_status_note = " ⏳" if not models_ready_event.is_set() else ""
+        content = f"✅ Queued: `{job.original_filename}` (#{queue_position}){model_status_note}"
         
         # Add simpler cancel button
         keyboard = [[InlineKeyboardButton("❌", callback_data=f"cancel_{job.job_id}")]]
         
         await self.app.bot.send_message(job.chat_id, content, parse_mode=ParseMode.MARKDOWN, reply_to_message_id=job.message_id, reply_markup=InlineKeyboardMarkup(keyboard))
-        print(f"[JOB:{job.job_id}] Added to queue at position {queue_position}.")
+        log("JOB", f"[{job.job_id}] Queued at #{queue_position}")
 
     def complete_job(self, job_id: str):
         if self.currently_processing and self.currently_processing.job_id == job_id:
             self.currently_processing = None
         if job_id in self.job_registry:
             del self.job_registry[job_id]
-        print(f"[JOB:{job_id}] Job completed and removed from registry.")
+        log("JOB", f"[{job_id}] Completed")
         self.idle_monitor.reset()
 
     def set_processing_job(self, job: TranscriptionJob):
         self.currently_processing = job
         job.status = "processing"
-        print(f"[JOB:{job.job_id}] Status set to 'processing'.")
+        log("JOB", f"[{job.job_id}] Processing...")
         self.idle_monitor.reset()
 
     async def cancel_job(self, job_id: str) -> tuple[bool, str]:
@@ -307,7 +307,7 @@ class JobManager:
         if not job:
             return False, "Unknown"
         job.status = "cancelled"
-        print(f"[JOB:{job.job_id}] Status set to 'cancelled'.")
+        log("JOB", f"[{job.job_id}] Cancelled")
         return True, job.original_filename
 
     def is_idle(self) -> bool:
@@ -501,7 +501,7 @@ async def send_telegram_notification(app: Application, message: str):
     try:
         await app.bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=message, parse_mode=ParseMode.MARKDOWN)
     except Exception as e:
-        print(f"⚠️ Could not send Telegram notification: {e}", file=sys.stderr)
+        log("ERROR", f"Telegram notification failed: {e}")
 
 async def perform_shutdown(reason: str):
     """Notifies admins and safely terminates the Colab runtime."""
@@ -509,31 +509,27 @@ async def perform_shutdown(reason: str):
     if SHUTDOWN_IN_PROGRESS: return
     SHUTDOWN_IN_PROGRESS = True
     uptime_str = get_runtime()
-    print(f"[{uptime_str}] 🛑 SHUTDOWN INITIATED. Reason: {reason}")
+    log("SHUTDOWN", f"Initiated. Reason: {reason}")
     try:
         if application:
-            await send_telegram_notification(application, f"🔌 *Bot is shutting down.*\nReason: {reason}\nRuntime: `{uptime_str}`")
-            print(f"[{uptime_str}] ✅ Shutdown notification sent.")
+            await send_telegram_notification(application, f"🔌 *Shutdown*\nReason: {reason}\nUptime: `{uptime_str}`")
+            log("SHUTDOWN", "Notification sent")
     except Exception as e:
-        print(f"⚠️ Could not send final notification, but shutting down anyway: {e}", file=sys.stderr)
+        log("ERROR", f"Final notification failed: {e}")
     finally:
-        print(f"[{uptime_str}] 🔌 Terminating Runtime...")
+        log("SHUTDOWN", "Terminating runtime...")
         runtime.unassign()
 
 async def initialize_models_background():
     """Loads Whisper and initializes Gemini client in a background task."""
     global model, gemini_client
     try:
-        print("⏳ [BG Task] Loading Whisper model...");
+        log("INIT", f"Loading Whisper ({Config.MODEL_SIZE}, {device})...")
         # Logic for compute_type based on Config and Device
         compute_type = "float16" if device == "cuda" else "int8"
         if Config.USE_FP16 != 'auto':
              if str(Config.USE_FP16).lower() == 'false':
                  compute_type = "float32"
-        
-        print(f"   - Model: {Config.MODEL_SIZE}")
-        print(f"   - Device: {device}")
-        print(f"   - Compute Type: {compute_type}")
 
         model = await asyncio.to_thread(
             WhisperModel, 
@@ -541,47 +537,50 @@ async def initialize_models_background():
             device=device, 
             compute_type=compute_type
         )
-        print(f"✅ [BG Task] Whisper model '{Config.MODEL_SIZE}' loaded.")
+        log("INIT", f"Whisper loaded ({compute_type})")
+        
         if GEMINI_API_KEY:
-            print("⏳ [BG Task] Initializing Gemini client...")
+            log("INIT", "Initializing Gemini...")
             gemini_client = genai.Client(api_key=GEMINI_API_KEY)
-            print("✅ [BG Task] Gemini client initialized.")
+            log("INIT", "Gemini ready")
 
         models_ready_event.set()
-        await send_telegram_notification(application, f"✅ *AI Models Online (Faster-Whisper)*\n- Reference Init: `{get_runtime()}`\n- Whisper: `{Config.MODEL_SIZE}`\n- Device: `{device}`\n- Gemini: `{'Enabled' if gemini_client else 'Disabled'}`\nBot is fully operational.")
+        gemini_status = "✓" if gemini_client else "✗"
+        await send_telegram_notification(application, f"✅ *Ready!* `{Config.MODEL_SIZE}` loaded in `{get_runtime()}`\nGemini: {gemini_status}")
     except Exception as e:
-        error_msg = f"❌ *FATAL ERROR:*\nFailed to load AI models: {e}"
-        await send_telegram_notification(application, error_msg)
+        log("ERROR", f"Model loading failed: {e}")
+        await send_telegram_notification(application, f"❌ *FATAL:* Model loading failed: {e}")
         await perform_shutdown("AI Model Loading Failed")
 
 async def initialize_gradio_background():
     """Launches Gradio web server in background and notifies Telegram with URL."""
     if not GRADIO_AVAILABLE:
-        print("⚠️ [BG Task] Gradio not available, skipping web interface.")
+        log("GRADIO", "Not available, skipping")
         return
     
     try:
-        print("⏳ [BG Task] Starting Gradio web interface...")
+        log("GRADIO", "Starting web interface...")
         main_loop = asyncio.get_running_loop()
         gradio_handler.set_dependencies(job_manager, UPLOAD_FOLDER, main_loop)
         public_url = await gradio_handler.launch_gradio_async(share=True)
         
         if public_url:
+            log("GRADIO", f"Online: {public_url}")
             await send_telegram_notification(
                 application,
-                f"🌐 *Web Interface Online*\n"
-                f"Upload large files (>20MB) via:\n{public_url}\n\n"
-                f"_Results will be sent to this chat._"
+                f"🌐 *Web UI*\n{public_url}\n_For files >20MB_"
             )
         else:
-            print("⚠️ [BG Task] Gradio started but no public URL available.")
+            log("GRADIO", "Started but no public URL")
     except Exception as e:
-        print(f"⚠️ [BG Task] Failed to start Gradio: {e}")
+        log("ERROR", f"Gradio failed: {e}")
 
 
 def run_transcription_process(job: TranscriptionJob) -> tuple[str, str]:
     """Runs the blocking Whisper transcription in a separate thread."""
-    print(f"[JOB:{job.job_id}] Transcribing '{job.original_filename}'...")
+    # Note: This runs in a thread, so we use print directly (log_utils works here too)
+    from log_utils import log
+    log("WHISPER", f"[{job.job_id}] Transcribing {job.original_filename}...")
     
     transcribe_options = {"beam_size": Config.BEAM_SIZE}
     
@@ -593,18 +592,20 @@ def run_transcription_process(job: TranscriptionJob) -> tuple[str, str]:
     segments = list(segments_generator)
     
     formatted_text = format_transcription_with_pauses(segments, Config.PAUSE_THRESHOLD)
-    print(f"[JOB:{job.job_id}] Transcription complete. Detected language: {info.language} ({info.language_probability:.2f})")
+    log("WHISPER", f"[{job.job_id}] Done: {len(segments)} segments, lang={info.language} ({info.language_probability:.0%})")
     
     return formatted_text, info.language if info.language else 'N/A'
 
 async def queue_processor():
     """The main worker loop that processes jobs from the queue one by one."""
-    print("🛠️ [Worker] Waiting for AI models to load..."); await models_ready_event.wait()
-    print("🟢 [Worker] AI Models ready. Starting to process jobs.")
+    log("WORKER", "Waiting for AI models...")
+    await models_ready_event.wait()
+    log("WORKER", "Models ready. Processing jobs...")
     while not SHUTDOWN_IN_PROGRESS:
         job: TranscriptionJob = await job_manager.job_queue.get()
 
         if job.status == 'cancelled':
+            log("WORKER", f"[{job.job_id}] Skipped (cancelled)")
             if os.path.exists(job.local_filepath): os.remove(job.local_filepath)
             job_manager.job_queue.task_done()
             job_manager.complete_job(job.job_id)
@@ -613,7 +614,7 @@ async def queue_processor():
         job_manager.set_processing_job(job)
         try:
             duration_str = format_duration(job.audio_duration)
-            await application.bot.send_message(job.chat_id, f"▶️ `[ID: {job.job_id}]` Processing `{job.original_filename}` (*{duration_str}*)...", parse_mode=ParseMode.MARKDOWN)
+            await application.bot.send_message(job.chat_id, f"▶️ Processing `{job.original_filename}` ({duration_str})...", parse_mode=ParseMode.MARKDOWN)
             start_time = time.time()
 
             transcript_text, detected_language = await asyncio.to_thread(run_transcription_process, job)
@@ -634,10 +635,10 @@ async def queue_processor():
             with open(su_filepath, "w", encoding="utf-8") as f: f.write(summary_text)
 
             processing_duration_str = format_duration(time.time() - start_time)
-            result_text = (f"🎉 *Transcription & Summary Complete!*\n\n"
-                           f"*File:* `{job.original_filename}`\n"
-                           f"*Duration:* {duration_str} | *Processing:* {processing_duration_str}\n"
-                           f"*Language:* {detected_language.upper()}")
+            log("JOB", f"[{job.job_id}] Done in {processing_duration_str}")
+            result_text = (f"✅ *Done!* `{job.original_filename}`\n"
+                           f"⏱️ {duration_str} audio → {processing_duration_str} process\n"
+                           f"🌐 Lang: {detected_language.upper()}")
 
             await application.bot.send_message(job.chat_id, result_text, parse_mode=ParseMode.MARKDOWN, reply_to_message_id=job.message_id)
             with open(su_filepath, 'rb') as su_file:
@@ -647,11 +648,11 @@ async def queue_processor():
             job.status = "completed"
 
         except asyncio.CancelledError as e:
-            print(f"[WORKER] Aborting cancelled job {job.job_id}. Reason: {e}")
+            log("WORKER", f"[{job.job_id}] Aborted: {e}")
         except Exception as e:
             job.status = "failed"
-            print(f"❌ [JOB:{job.job_id}] An error occurred: {e}", file=sys.stderr)
-            await application.bot.send_message(job.chat_id, f"❌ *Failed to Process: {job.original_filename}*\n```\n{e}\n```", parse_mode=ParseMode.MARKDOWN, reply_to_message_id=job.message_id)
+            log("ERROR", f"[{job.job_id}] {e}")
+            await application.bot.send_message(job.chat_id, f"❌ *Failed:* `{job.original_filename}`\n`{e}`", parse_mode=ParseMode.MARKDOWN, reply_to_message_id=job.message_id)
         finally:
             if os.path.exists(job.local_filepath):
                 os.remove(job.local_filepath)
@@ -671,26 +672,18 @@ async def get_status_text_and_keyboard():
     """Builds the dynamic status message text and keyboard."""
     processing_job = job_manager.currently_processing
     if processing_job:
-        processing_status_line = (
-            f"⚡️ *Processing:* `{processing_job.original_filename}`\n"
-            f"👤 *By:* {processing_job.author_display_name}\n"
-        )
-        bot_activity = "Active"
+        processing_line = f"▶️ `{processing_job.original_filename}` (by {processing_job.author_display_name})\n"
     else:
-        processing_status_line = ""
-        bot_activity = "Idle"
+        processing_line = ""
 
+    ai_status = "✅" if models_ready_event.is_set() else "⏳"
     text = (
-        f"📊 *Bot Status & Health*\n\n"
-        f"{processing_status_line}"
-        f"⏳ *Session Uptime:* `{get_runtime()}`\n"
-        f"*Jobs in Queue:* `{job_manager.job_queue.qsize()}`\n"
-        f"*Bot Activity:* `{bot_activity}`\n"
-        f"*AI Model Status:* `{'✅ Online' if models_ready_event.is_set() else '⏳ Initializing...'}`\n\n"
-        f"_Last updated: {time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime())}_"
+        f"📊 *Status*\n"
+        f"{processing_line}"
+        f"⏳ Uptime: `{get_runtime()}` | Queue: `{job_manager.job_queue.qsize()}`\n"
+        f"🤖 AI: {ai_status}"
     )
-    keyboard = [[InlineKeyboardButton("📄 View & Cancel Jobs", callback_data="view_cancel_jobs")],
-                [InlineKeyboardButton("🔄 Refresh", callback_data="refresh_status"), InlineKeyboardButton("🔌 Shutdown", callback_data="shutdown_bot")]]
+    keyboard = [[InlineKeyboardButton("📄 Jobs", callback_data="view_cancel_jobs"), InlineKeyboardButton("🔄", callback_data="refresh_status"), InlineKeyboardButton("🔌", callback_data="shutdown_bot")]]
 
     return text, InlineKeyboardMarkup(keyboard)
 
@@ -713,9 +706,9 @@ async def queue_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def extend_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not Config.ENABLE_IDLE_MONITOR:
-        await update.effective_message.reply_text("Idle monitor is disabled.")
+        await update.effective_message.reply_text("Idle monitor disabled.")
         return
-    msg = "✅ Idle shutdown timer extended by 5 minutes." if idle_monitor.extend_timer(5) else "ℹ️ The bot is active, so the idle timer is not running."
+    msg = "✅ +5m extended" if idle_monitor.extend_timer(5) else "ℹ️ Bot active, no timer."
     await update.effective_message.reply_text(msg)
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -854,8 +847,7 @@ async def main():
 
     # ⚡ FAST INIT: Initialize bot connection FIRST (before background tasks)
     await application.initialize()
-    print(f"\n▶️ Bot is running (Init: {get_runtime()}). Receiving messages now!")
-    print("⏳ Loading AI models and services in background...")
+    log("INIT", f"Bot online ({get_runtime()})")
 
     # Background Tasks - start AFTER bot is ready to receive
     application.create_task(queue_processor())
@@ -869,16 +861,11 @@ async def main():
         idle_monitor.start()
 
     # Send startup notification in background (non-blocking)
-    gradio_status = "⏳ Loading..." if GRADIO_AVAILABLE else "❌ Disabled"
     startup_message = (
-        f"🚀 *Bot is starting up... (Modular Version)*\n\n"
-        f"*Model:* `{Config.MODEL_SIZE}` on `{device.upper()}`\n"
-        f"*Idle Monitor:* `{'Enabled' if Config.ENABLE_IDLE_MONITOR else 'Disabled'}`\n"
-        f"*Bot Handle Limit:* `{Config.BOT_FILESIZE_LIMIT} MB` per file.\n"
-        f"*Web UI:* `{gradio_status}`\n\n"
-        f"ℹ️ *Usage Tips:*\n"
-        f"- All audio & video formats supported by FFmpeg are accepted.\n"
-        f"- For files >20MB, use Web UI (URL menyusul)."
+        f"🚀 *Bot Online*\n\n"
+        f"📌 Model: `{Config.MODEL_SIZE}` | Device: `{device.upper()}`\n"
+        f"📂 Max file: `{Config.BOT_FILESIZE_LIMIT}MB`\n"
+        f"🖥️ Web UI: Loading..."
     )
     asyncio.create_task(send_telegram_notification(application, startup_message))
     

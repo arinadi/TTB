@@ -1,6 +1,7 @@
 import asyncio
 import sys
 from datetime import datetime
+from log_utils import log
 
 async def summarize_text(transcript: str, gemini_client) -> str:
     """Generates a journalist-friendly summary of the transcript using the Gemini API in Indonesian."""
@@ -41,13 +42,16 @@ async def summarize_text(transcript: str, gemini_client) -> str:
         f"```\n{transcript}\n```"
     )
     try:
+        log("GEMINI", f"Requesting summary ({len(transcript)} chars)...")
         response = await asyncio.to_thread(
             gemini_client.models.generate_content,
             model="gemini-2.5-flash",
             contents=prompt
         )
+        log("GEMINI", f"Summary received ({len(response.text)} chars)")
         return response.text
     except Exception as e:
+        log("ERROR", f"Gemini failed: {e}")
         return f"❌ Error generating summary: {e}"
 
 def format_duration(seconds: float) -> str:
