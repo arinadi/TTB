@@ -582,6 +582,8 @@ def run_transcription_process(job: TranscriptionJob) -> tuple[str, str]:
     from log_utils import log
     log("WHISPER", f"[{job.job_id}] Transcribing {job.original_filename}...")
     
+    transcribe_options = {"beam_size": Config.BEAM_SIZE}
+    
     # Run transcription
     # faster-whisper returns a generator, so we must iterate to process
     # VAD filter disabled by user request, but we keep native segment formatting
