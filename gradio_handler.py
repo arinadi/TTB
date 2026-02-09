@@ -88,10 +88,10 @@ def process_upload(file_paths: list) -> str:
     file_list = "\n".join(results)
     
     return (
-        f"📤 **{file_count} file berhasil di-upload!**\n\n"
+        f"📤 **{file_count} file(s) uploaded successfully!**\n\n"
         f"{file_list}\n\n"
-        f"📋 Status: Masuk antrian transkripsi\n"
-        f"📱 Hasil akan dikirim ke Telegram."
+        f"📋 Status: Added to transcription queue\n"
+        f"📱 Results will be sent to Telegram."
     )
 
 
@@ -148,14 +148,14 @@ def create_gradio_interface() -> Optional["gr.Blocks"]:
             """
             # 🎙️ TTB - Transcription Bot (Web)
             
-            Upload file audio/video berukuran besar (>20MB) melalui interface ini.
-            Hasil transkripsi akan dikirim ke Telegram.
+            Upload large audio/video files (>20MB) through this interface.
+            Transcription results will be sent to Telegram.
             """
         )
         
         with gr.Column():
             file_input = gr.File(
-                label="📁 Upload Audio/Video (bisa pilih banyak file)",
+                label="📁 Upload Audio/Video (multiple files supported)",
                 file_types=["audio", "video", ".mp3", ".mp4", ".wav", ".m4a", ".webm", ".ogg", ".flac", ".mkv"],
                 type="filepath",
                 file_count="multiple"
@@ -167,15 +167,15 @@ def create_gradio_interface() -> Optional["gr.Blocks"]:
                 lines=6
             )
             
-            upload_more_btn = gr.Button("🔄 Upload Lagi", variant="secondary", size="lg", visible=False)
+            upload_more_btn = gr.Button("🔄 Upload More", variant="secondary", size="lg", visible=False)
         
         gr.Markdown(
             """
             ---
             **Supported formats:** MP3, MP4, WAV, M4A, WEBM, OGG, FLAC, MKV
             
-            **Note:** File akan diproses secara berurutan (FIFO queue).
-            Hasil akan dikirim ke Telegram secara otomatis.
+            **Note:** Files are processed sequentially (FIFO queue).
+            Results will be sent to Telegram automatically.
             """
         )
         

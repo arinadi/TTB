@@ -1,25 +1,46 @@
 import asyncio
 import sys
+from datetime import datetime
 
 async def summarize_text(transcript: str, gemini_client) -> str:
-    """Generates a summary of the transcript using the Gemini API in Indonesian."""
+    """Generates a journalist-friendly summary of the transcript using the Gemini API in Indonesian."""
     if not gemini_client:
-        return "Summarisasi dinonaktifkan: Kunci API Gemini tidak dikonfigurasi atau client gagal dimuat."
+        return "Summarization disabled: Gemini API key not configured or client failed to load."
 
+    today_date = datetime.now().strftime("%d %B %Y")
+    
     prompt = (
-        "Anda adalah AI ahli peringkas. "
-        "Ringkas transkrip berikut ke dalam Bahasa Indonesia dengan format Plain Text (tanpa markdown, tanpa bold/italic).\n\n"
-        "Fokus pada:\n"
-        "- Ide utama atau topik sentral.\n"
-        "- Kesimpulan atau poin-poin penting yang disampaikan.\n"
-        "- Jika ada, sebutkan juga keputusan atau tugas (action items) yang jelas.\n\n"
-        "Gunakan format poin-poin sederhana (- poin 1, - poin 2) agar mudah dibaca.\n\n"
+        "Anda adalah AI peringkas untuk jurnalis. "
+        "Ringkas transkrip berikut ke dalam Bahasa Indonesia dengan format Plain Text.\n\n"
+        "ATURAN PENTING:\n"
+        "- JANGAN mengarang atau berasumsi informasi yang tidak ada di transkrip.\n"
+        "- Jika informasi tidak ditemukan, KOSONGKAN bagian tersebut atau tulis '-'.\n"
+        "- Hanya tulis informasi yang JELAS terlihat di transkrip.\n"
+        f"- Jika tanggal tidak disebutkan di transkrip, gunakan: {today_date}\n\n"
+        "FORMAT OUTPUT:\n\n"
+        "RINGKASAN BERITA\n"
+        f"Tanggal: [tanggal dari transkrip atau {today_date}]\n\n"
+        "LEAD (Paragraf Pembuka):\n"
+        "[1-2 kalimat inti berita: siapa, apa, kapan, dimana]\n\n"
+        "BODY:\n"
+        "A. [Topik/Angle 1]\n"
+        "   - Detail penting\n"
+        "   - Kutipan pendukung (jika ada)\n\n"
+        "B. [Topik/Angle 2, jika ada]\n"
+        "   - Detail penting\n\n"
+        "NARASUMBER:\n"
+        "1. [Nama] - [Jabatan] - \"[Kutipan kunci]\"\n"
+        "(Kosongkan jika tidak ada narasumber jelas)\n\n"
+        "DATA PENDUKUNG:\n"
+        "- [Angka/statistik dari transkrip]\n"
+        "(Kosongkan jika tidak ada data)\n\n"
+        "PERLU KLARIFIKASI:\n"
+        "- [Hal yang tidak jelas atau perlu dicek]\n"
+        "(Kosongkan jika tidak ada)\n\n"
         "--- TRANSKRIP ---\n"
         f"```\n{transcript}\n```"
     )
     try:
-        # Using run_in_executor to run the synchronous API call in a separate thread
-        # to avoid blocking the asyncio event loop.
         response = await asyncio.to_thread(
             gemini_client.models.generate_content,
             model="gemini-2.5-flash",
@@ -27,7 +48,7 @@ async def summarize_text(transcript: str, gemini_client) -> str:
         )
         return response.text
     except Exception as e:
-        return f"❌ Terjadi kesalahan saat membuat ringkasan: {e}"
+        return f"❌ Error generating summary: {e}"
 
 def format_duration(seconds: float) -> str:
     """Converts a duration in seconds to a human-readable 'Xm XXs' format."""

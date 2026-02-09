@@ -160,14 +160,14 @@ You can change default settings inside `main.py` (`Config` class):
 
 ## 🔄 Network Resilience
 
-Bot ini memiliki error handling yang robust untuk menangani masalah koneksi di Colab:
+This bot has robust error handling for connection issues in Colab:
 
--   **Auto-Retry**: Transient network errors akan di-retry otomatis (max 2x) tanpa shutdown.
+-   **Auto-Retry**: Transient network errors are auto-retried (max 2x) without shutdown.
 -   **Extended Timeouts**: `read_timeout=60s`, `write_timeout=30s`, `pool_timeout=30s`.
--   **Connection Pool**: Pool size 8 untuk koneksi yang lebih stabil.
+-   **Connection Pool**: Pool size 8 for more stable connections.
 
-**Errors yang ditangani (tidak trigger shutdown):**
-| Kategori | Error Types |
+**Handled Errors (no shutdown triggered):**
+| Category | Error Types |
 | :--- | :--- |
 | **httpx** | `ReadError`, `WriteError`, `ConnectError`, `ConnectTimeout`, `ReadTimeout`, `WriteTimeout`, `PoolTimeout`, `CloseError`, `ProxyError`, `ProtocolError` |
 | **SSL** | `SSLError`, `SSLCertVerificationError` |

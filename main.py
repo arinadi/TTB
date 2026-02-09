@@ -570,8 +570,8 @@ async def initialize_gradio_background():
             await send_telegram_notification(
                 application,
                 f"🌐 *Web Interface Online*\n"
-                f"Upload file besar (>20MB) via:\n{public_url}\n\n"
-                f"_Hasil akan dikirim ke chat ini._"
+                f"Upload large files (>20MB) via:\n{public_url}\n\n"
+                f"_Results will be sent to this chat._"
             )
         else:
             print("⚠️ [BG Task] Gradio started but no public URL available.")
@@ -852,9 +852,12 @@ async def main():
 
     application.add_error_handler(global_error_handler)
 
-    # Background Tasks
+    # ⚡ FAST INIT: Initialize bot connection FIRST (before background tasks)
+    await application.initialize()
+    print(f"\n▶️ Bot is running (Init: {get_runtime()}). Receiving messages now!")
+    print("⏳ Loading AI models and services in background...")
 
-    # Background Tasks
+    # Background Tasks - start AFTER bot is ready to receive
     application.create_task(queue_processor())
     application.create_task(initialize_models_background())
     
@@ -863,25 +866,23 @@ async def main():
         application.create_task(initialize_gradio_background())
     
     if Config.ENABLE_IDLE_MONITOR:
-
         idle_monitor.start()
 
-    await application.initialize()
-
+    # Send startup notification in background (non-blocking)
+    gradio_status = "⏳ Loading..." if GRADIO_AVAILABLE else "❌ Disabled"
     startup_message = (
         f"🚀 *Bot is starting up... (Modular Version)*\n\n"
         f"*Model:* `{Config.MODEL_SIZE}` on `{device.upper()}`\n"
         f"*Idle Monitor:* `{'Enabled' if Config.ENABLE_IDLE_MONITOR else 'Disabled'}`\n"
-        f"*Bot Handle Limit:* `{Config.BOT_FILESIZE_LIMIT} MB` per file.\n\n"
+        f"*Bot Handle Limit:* `{Config.BOT_FILESIZE_LIMIT} MB` per file.\n"
+        f"*Web UI:* `{gradio_status}`\n\n"
         f"ℹ️ *Usage Tips:*\n"
         f"- All audio & video formats supported by FFmpeg are accepted.\n"
-        f"- For files exceeding the limit, please use a multi-part ZIP archive."
+        f"- For files >20MB, use Web UI (URL menyusul)."
     )
+    asyncio.create_task(send_telegram_notification(application, startup_message))
     
-    await send_telegram_notification(application, startup_message)
-    print(f"\n▶️ Bot is running (Startup: {get_runtime()}). Send a file to the configured Telegram chat.")
-    
-    # Run
+    # Run polling - bot starts receiving messages immediately
     await application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
