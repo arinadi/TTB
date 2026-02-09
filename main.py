@@ -562,7 +562,8 @@ async def initialize_gradio_background():
     
     try:
         print("⏳ [BG Task] Starting Gradio web interface...")
-        gradio_handler.set_dependencies(job_manager, UPLOAD_FOLDER)
+        main_loop = asyncio.get_running_loop()
+        gradio_handler.set_dependencies(job_manager, UPLOAD_FOLDER, main_loop)
         public_url = await gradio_handler.launch_gradio_async(share=True)
         
         if public_url:

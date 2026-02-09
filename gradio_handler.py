@@ -23,13 +23,15 @@ gradio_app: Optional["gr.Blocks"] = None
 gradio_ready_event = asyncio.Event()
 _job_manager: Optional["JobManager"] = None
 _upload_folder: str = "uploads"
+_main_loop: Optional[asyncio.AbstractEventLoop] = None
 
 
-def set_dependencies(job_manager: "JobManager", upload_folder: str):
+def set_dependencies(job_manager: "JobManager", upload_folder: str, main_loop: asyncio.AbstractEventLoop):
     """Set dependencies from main module."""
-    global _job_manager, _upload_folder
+    global _job_manager, _upload_folder, _main_loop
     _job_manager = job_manager
     _upload_folder = upload_folder
+    _main_loop = main_loop
 
 
 def _get_telegram_chat_id() -> int:
@@ -40,50 +42,56 @@ def _get_telegram_chat_id() -> int:
     raise ValueError("TELEGRAM_CHAT_ID not found in environment variables")
 
 
-def process_upload(file_path: str) -> str:
+def process_upload(file_paths: list) -> str:
     """
-    Process uploaded file and add to job queue.
-    Returns status message for Gradio UI.
+    Process uploaded files and add to job queue.
+    Supports multiple files. Returns status message for Gradio UI.
     """
     if not _job_manager:
         return "❌ Error: Job manager not initialized."
     
-    if not file_path:
-        return "⚠️ Tidak ada file yang dipilih."
+    if not file_paths:
+        return ""
     
     try:
         chat_id = _get_telegram_chat_id()
     except ValueError as e:
         return f"❌ Error: {e}"
     
-    # Get original filename from path
-    original_filename = os.path.basename(file_path)
-    
-    # Generate unique filename for storage
-    unique_filename = f"{uuid.uuid4().hex}_{original_filename}"
-    dest_path = os.path.join(_upload_folder, unique_filename)
-    
-    # Copy file to upload folder (Gradio provides temp path)
     import shutil
-    shutil.copy2(file_path, dest_path)
+    results = []
     
-    # Get file size for display
-    file_size_mb = os.path.getsize(dest_path) / (1024 * 1024)
+    for file_path in file_paths:
+        # Get original filename from path
+        original_filename = os.path.basename(file_path)
+        
+        # Generate unique filename for storage
+        unique_filename = f"{uuid.uuid4().hex}_{original_filename}"
+        dest_path = os.path.join(_upload_folder, unique_filename)
+        
+        # Copy file to upload folder (Gradio provides temp path)
+        shutil.copy2(file_path, dest_path)
+        
+        # Get file size for display
+        file_size_mb = os.path.getsize(dest_path) / (1024 * 1024)
+        
+        # Queue the job on the main event loop (from sync thread)
+        if _main_loop is None:
+            print("[GRADIO] Error: Main event loop not set!")
+            continue
+        
+        asyncio.run_coroutine_threadsafe(_queue_gradio_job(dest_path, original_filename, chat_id), _main_loop)
+        
+        results.append(f"✅ {original_filename} ({file_size_mb:.2f} MB)")
     
-    # Queue the job on the main event loop (from sync thread)
-    try:
-        loop = asyncio.get_event_loop()
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-    
-    asyncio.run_coroutine_threadsafe(_queue_gradio_job(dest_path, original_filename, chat_id), loop)
+    file_count = len(results)
+    file_list = "\n".join(results)
     
     return (
-        f"✅ File `{original_filename}` ({file_size_mb:.2f} MB) berhasil di-upload!\n\n"
+        f"📤 **{file_count} file berhasil di-upload!**\n\n"
+        f"{file_list}\n\n"
         f"📋 Status: Masuk antrian transkripsi\n"
-        f"📱 Hasil akan dikirim ke Telegram.\n\n"
-        f"💡 Anda bisa upload file lain sekarang."
+        f"📱 Hasil akan dikirim ke Telegram."
     )
 
 
@@ -147,18 +155,19 @@ def create_gradio_interface() -> Optional["gr.Blocks"]:
         
         with gr.Column():
             file_input = gr.File(
-                label="📁 Upload Audio/Video",
+                label="📁 Upload Audio/Video (bisa pilih banyak file)",
                 file_types=["audio", "video", ".mp3", ".mp4", ".wav", ".m4a", ".webm", ".ogg", ".flac", ".mkv"],
-                type="filepath"
+                type="filepath",
+                file_count="multiple"
             )
-            
-            submit_btn = gr.Button("📤 Upload & Queue", variant="primary", size="lg")
             
             status_output = gr.Textbox(
                 label="Status",
                 interactive=False,
-                lines=5
+                lines=6
             )
+            
+            upload_more_btn = gr.Button("🔄 Upload Lagi", variant="secondary", size="lg", visible=False)
         
         gr.Markdown(
             """
@@ -170,10 +179,28 @@ def create_gradio_interface() -> Optional["gr.Blocks"]:
             """
         )
         
-        submit_btn.click(
-            fn=process_upload,
+        def handle_upload(files):
+            """Process files and return status + show reset button."""
+            if not files:
+                return "", gr.update(visible=False)
+            status = process_upload(files)
+            return status, gr.update(visible=True)
+        
+        def reset_upload():
+            """Reset file input for new uploads."""
+            return None, "", gr.update(visible=False)
+        
+        # Auto-process when files are added
+        file_input.change(
+            fn=handle_upload,
             inputs=[file_input],
-            outputs=status_output
+            outputs=[status_output, upload_more_btn]
+        )
+        
+        # Reset button to upload more files
+        upload_more_btn.click(
+            fn=reset_upload,
+            outputs=[file_input, status_output, upload_more_btn]
         )
     
     gradio_app = app
