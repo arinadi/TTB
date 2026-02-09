@@ -70,8 +70,14 @@ def process_upload(file_path: str) -> str:
     # Get file size for display
     file_size_mb = os.path.getsize(dest_path) / (1024 * 1024)
     
-    # Queue the job asynchronously
-    asyncio.create_task(_queue_gradio_job(dest_path, original_filename, chat_id))
+    # Queue the job on the main event loop (from sync thread)
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    
+    asyncio.run_coroutine_threadsafe(_queue_gradio_job(dest_path, original_filename, chat_id), loop)
     
     return (
         f"✅ File `{original_filename}` ({file_size_mb:.2f} MB) berhasil di-upload!\n\n"
