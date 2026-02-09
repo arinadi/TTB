@@ -32,7 +32,15 @@ def set_dependencies(job_manager: "JobManager", upload_folder: str):
     _upload_folder = upload_folder
 
 
-def process_upload(file_path: str, telegram_chat_id: str) -> str:
+def _get_telegram_chat_id() -> int:
+    """Get TELEGRAM_CHAT_ID from environment variable (set by Colab runner)."""
+    chat_id = os.environ.get('TELEGRAM_CHAT_ID')
+    if chat_id:
+        return int(chat_id)
+    raise ValueError("TELEGRAM_CHAT_ID not found in environment variables")
+
+
+def process_upload(file_path: str) -> str:
     """
     Process uploaded file and add to job queue.
     Returns status message for Gradio UI.
@@ -43,13 +51,10 @@ def process_upload(file_path: str, telegram_chat_id: str) -> str:
     if not file_path:
         return "⚠️ Tidak ada file yang dipilih."
     
-    if not telegram_chat_id or not telegram_chat_id.strip():
-        return "⚠️ Masukkan Telegram Chat ID untuk menerima hasil."
-    
     try:
-        chat_id = int(telegram_chat_id.strip())
-    except ValueError:
-        return "❌ Chat ID harus berupa angka."
+        chat_id = _get_telegram_chat_id()
+    except ValueError as e:
+        return f"❌ Error: {e}"
     
     # Get original filename from path
     original_filename = os.path.basename(file_path)
@@ -71,7 +76,7 @@ def process_upload(file_path: str, telegram_chat_id: str) -> str:
     return (
         f"✅ File `{original_filename}` ({file_size_mb:.2f} MB) berhasil di-upload!\n\n"
         f"📋 Status: Masuk antrian transkripsi\n"
-        f"📱 Hasil akan dikirim ke Chat ID: {chat_id}\n\n"
+        f"📱 Hasil akan dikirim ke Telegram.\n\n"
         f"💡 Anda bisa upload file lain sekarang."
     )
 
@@ -141,12 +146,6 @@ def create_gradio_interface() -> Optional["gr.Blocks"]:
                 type="filepath"
             )
             
-            chat_id_input = gr.Textbox(
-                label="📱 Telegram Chat ID",
-                placeholder="Contoh: 123456789",
-                info="Chat ID tempat hasil akan dikirim"
-            )
-            
             submit_btn = gr.Button("📤 Upload & Queue", variant="primary", size="lg")
             
             status_output = gr.Textbox(
@@ -161,12 +160,13 @@ def create_gradio_interface() -> Optional["gr.Blocks"]:
             **Supported formats:** MP3, MP4, WAV, M4A, WEBM, OGG, FLAC, MKV
             
             **Note:** File akan diproses secara berurutan (FIFO queue).
+            Hasil akan dikirim ke Telegram secara otomatis.
             """
         )
         
         submit_btn.click(
             fn=process_upload,
-            inputs=[file_input, chat_id_input],
+            inputs=[file_input],
             outputs=status_output
         )
     

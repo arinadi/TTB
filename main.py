@@ -51,34 +51,18 @@ except ImportError:
     print("⚠️ gradio_handler not available. Web interface disabled.")
 
 
-# --- 1.1. Load Core Secrets ---
-try:
-    # Try loading from Colab userdata first
-    from google.colab import userdata, runtime
-    IS_COLAB = True
-    try:
-        TELEGRAM_BOT_TOKEN = userdata.get('TELEGRAM_BOT_TOKEN')
-        TELEGRAM_CHAT_ID = userdata.get('TELEGRAM_CHAT_ID')
-        GEMINI_API_KEY = userdata.get('GEMINI_API_KEY')
-        
-        # Optional: HF_TOKEN
-        hf_token = userdata.get('HF_TOKEN')
-        if hf_token: os.environ['HF_TOKEN'] = hf_token
-    except (AttributeError, Exception):
-        # Fallback to os.environ if running as subprocess (!python main.py)
-        # where userdata might fail to access the kernel
-        TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
-        TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID')
-        GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
+# --- 1.1. Load Core Secrets (from environment - set by Colab runner) ---
+TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
+TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID')
+GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
 
+# Detect Colab runtime for shutdown functionality
+try:
+    from google.colab import runtime
+    IS_COLAB = True
 except ImportError:
-    # Fallback for local testing (Environmental Variables)
-    TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
-    TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID')
-    GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
     IS_COLAB = False
-    
-    # Mock runtime for local
+    # Mock runtime for local testing
     class MockRuntime:
         def unassign(self): print("🔌 Local Runtime Shutdown Executed")
     runtime = MockRuntime()
@@ -106,8 +90,8 @@ class Config:
     MAX_AUDIO_DURATION_MINUTES = int(os.getenv('MAX_AUDIO_DURATION_MINUTES', 90))
     
     ENABLE_IDLE_MONITOR = os.getenv('ENABLE_IDLE_MONITOR', 'True').lower() == 'true'
-    IDLE_NOTIFY_MINUTES = int(os.getenv('IDLE_NOTIFY_MINUTES', 1))
-    IDLE_WARNING_MINUTES = int(os.getenv('IDLE_WARNING_MINUTES', 2))
+    IDLE_FIRST_ALERT_MINUTES = int(os.getenv('IDLE_FIRST_ALERT_MINUTES', 1))
+    IDLE_FINAL_WARNING_MINUTES = int(os.getenv('IDLE_FINAL_WARNING_MINUTES', 2))
     IDLE_SHUTDOWN_MINUTES = int(os.getenv('IDLE_SHUTDOWN_MINUTES', 3))
     
     BOT_FILESIZE_LIMIT = int(os.getenv('BOT_FILESIZE_LIMIT', 20))
@@ -181,17 +165,26 @@ class TranscriptionJob:
         return job
 
 class IdleMonitor:
-    """Monitors bot activity and triggers notifications or shutdowns when idle."""
+    """Monitors bot activity and triggers alerts or shutdown when idle.
+    
+    Timeline with Config (Notify=1, Warn=5, Shutdown=10):
+    - [0m]  Bot idle → shutdown_on = now + 10 minutes
+    - [1m]  elapsed=1 → First Alert sent (with Extend button)
+    - [5m]  elapsed=5 → Final Warning sent
+    - [10m] elapsed=10, remaining=0 → Shutdown
+    
+    extend_timer() adds minutes to shutdown_on, delaying shutdown.
+    """
     def __init__(self, app: Application, job_manager: "JobManager"):
         self.app = app
         self.job_manager = job_manager
-        self.idle_since: Optional[float] = None
+        self.shutdown_on: Optional[float] = None  # Absolute timestamp for shutdown
         self.shutdown_imminent = False
-        self.warnings_sent = {'notify': False, 'warning': False}
+        self.alerts_sent = {'first_alert': False, 'final_warning': False}
         self.last_extend_time = 0
         self._task: Optional[asyncio.Task] = None
         print("✅ IdleMonitor initialized.")
-        print(f"DEBUG: Idle Config -> Notify: {Config.IDLE_NOTIFY_MINUTES}m, Warn: {Config.IDLE_WARNING_MINUTES}m, Shutdown: {Config.IDLE_SHUTDOWN_MINUTES}m")
+        print(f"DEBUG: Idle Config -> First Alert at {Config.IDLE_FIRST_ALERT_MINUTES}m, Final Warning at {Config.IDLE_FINAL_WARNING_MINUTES}m, Shutdown at {Config.IDLE_SHUTDOWN_MINUTES}m")
 
     def start(self):
         if not self._task or self._task.done():
@@ -203,48 +196,73 @@ class IdleMonitor:
             self._task.cancel()
 
     def reset(self):
-        if self.idle_since is not None:
-            print("[IDLE_MONITOR] Bot is active. Timer reset.")
-            self.idle_since = None
-            self.warnings_sent = {'notify': False, 'warning': False}
+        if self.shutdown_on is not None:
+            print(f"[{get_runtime()}] [IDLE_MONITOR] Bot is active. Timer reset.")
+            self.shutdown_on = None
+            self.alerts_sent = {'first_alert': False, 'final_warning': False}
 
     def extend_timer(self, minutes: int) -> bool:
-        if self.idle_since is not None:
-            self.idle_since += (minutes * 60)
-            self.warnings_sent = {'notify': False, 'warning': False}
-            print(f"[IDLE_MONITOR] Idle timer extended by {minutes} minutes.");
+        """Extend shutdown time by adding minutes to shutdown_on."""
+        if self.shutdown_on is not None:
+            self.shutdown_on += (minutes * 60)
+            # Reset alerts so user gets them again with new timing
+            self.alerts_sent = {'first_alert': False, 'final_warning': False}
+            remaining = (self.shutdown_on - time.time()) / 60
+            print(f"[{get_runtime()}] [IDLE_MONITOR] Timer extended +{minutes}m. Shutdown in {remaining:.1f}m.")
             return True
         return False
 
     async def _monitor_loop(self):
         while True:
             await asyncio.sleep(60)
+            
+            # Skip if not enabled or shutdown already in progress
             if self.shutdown_imminent or not Config.ENABLE_IDLE_MONITOR:
                 continue
+            
+            # Wait for job_manager to be initialized
+            if self.job_manager is None:
+                print("[IDLE_MONITOR] Waiting for job_manager...")
+                continue
 
-            if self.job_manager.is_idle():
-                if self.idle_since is None:
-                    self.idle_since = time.time()
-                    print(f"[{get_runtime()}] [IDLE_MONITOR] Bot is now idle. Starting timer.")
-                    continue
+            try:
+                if self.job_manager.is_idle():
+                    # First time idle - set shutdown_on (absolute time)
+                    if self.shutdown_on is None:
+                        self.shutdown_on = time.time() + (Config.IDLE_SHUTDOWN_MINUTES * 60)
+                        print(f"[{get_runtime()}] [IDLE_MONITOR] Bot is now idle. Shutdown in {Config.IDLE_SHUTDOWN_MINUTES}m.")
 
-                idle_duration_minutes = (time.time() - self.idle_since) / 60
-                if idle_duration_minutes >= Config.IDLE_SHUTDOWN_MINUTES:
-                    self.shutdown_imminent = True
-                    shutdown_msg = f"🔴 *AUTO SHUTDOWN:*\nBot has been idle for over *{Config.IDLE_SHUTDOWN_MINUTES}* minutes."
-                    await send_telegram_notification(self.app, shutdown_msg)
-                    await perform_shutdown("Automatic Idle Shutdown")
-                elif idle_duration_minutes >= Config.IDLE_WARNING_MINUTES and not self.warnings_sent['warning']:
-                    warn_msg = f"⚠️ *IDLE WARNING:*\nBot will shut down in approx. *{Config.IDLE_SHUTDOWN_MINUTES - int(idle_duration_minutes)}* minutes."
-                    await send_telegram_notification(self.app, warn_msg)
-                    self.warnings_sent['warning'] = True
-                elif idle_duration_minutes >= Config.IDLE_NOTIFY_MINUTES and not self.warnings_sent['notify']:
-                    notify_msg = f"ℹ️ *IDLE NOTIFICATION:*\nBot is currently idle."
-                    keyboard = [[InlineKeyboardButton("⏳ Extend Timer (+5 min)", callback_data="extend_idle")]]
-                    await self.app.bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=notify_msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.MARKDOWN)
-                    self.warnings_sent['notify'] = True
-            else:
-                self.reset()
+                    # Calculate times
+                    remaining_minutes = (self.shutdown_on - time.time()) / 60
+                    elapsed_minutes = Config.IDLE_SHUTDOWN_MINUTES - remaining_minutes
+                    print(f"[{get_runtime()}] [IDLE_MONITOR] Elapsed: {elapsed_minutes:.1f}m, Remaining: {remaining_minutes:.1f}m")
+                    
+                    # 1. FIRST ALERT when elapsed >= IDLE_FIRST_ALERT_MINUTES (e.g., 1 min idle)
+                    if elapsed_minutes >= Config.IDLE_FIRST_ALERT_MINUTES and not self.alerts_sent['first_alert']:
+                        alert_msg = f"ℹ️ *IDLE ALERT:*\nBot is idle. Shutdown in *{int(remaining_minutes)}* minutes."
+                        keyboard = [[InlineKeyboardButton("⏳ Extend Timer (+5 min)", callback_data="extend_idle")]]
+                        await self.app.bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=alert_msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.MARKDOWN)
+                        self.alerts_sent['first_alert'] = True
+                        print(f"[{get_runtime()}] [IDLE_MONITOR] First alert sent.")
+                    
+                    # 2. FINAL WARNING when elapsed >= IDLE_FINAL_WARNING_MINUTES (e.g., 5 min idle)
+                    if elapsed_minutes >= Config.IDLE_FINAL_WARNING_MINUTES and not self.alerts_sent['final_warning']:
+                        warn_msg = f"⚠️ *FINAL WARNING:*\nBot will shut down in approx. *{int(remaining_minutes)}* minutes!"
+                        await send_telegram_notification(self.app, warn_msg)
+                        self.alerts_sent['final_warning'] = True
+                        print(f"[{get_runtime()}] [IDLE_MONITOR] Final warning sent.")
+                    
+                    # 3. SHUTDOWN when remaining <= 0
+                    if remaining_minutes <= 0:
+                        self.shutdown_imminent = True
+                        shutdown_msg = f"🔴 *AUTO SHUTDOWN:*\nBot has been idle for over *{Config.IDLE_SHUTDOWN_MINUTES}* minutes."
+                        await send_telegram_notification(self.app, shutdown_msg)
+                        print(f"[{get_runtime()}] [IDLE_MONITOR] Shutdown triggered.")
+                        await perform_shutdown("Automatic Idle Shutdown")
+                else:
+                    self.reset()
+            except Exception as e:
+                print(f"[{get_runtime()}] [IDLE_MONITOR] Error in loop: {e}")
 
 class JobManager:
     """Manages the queue and state of all transcription jobs."""
@@ -551,8 +569,8 @@ async def initialize_gradio_background():
             await send_telegram_notification(
                 application,
                 f"🌐 *Web Interface Online*\n"
-                f"Upload file besar (>20MB) via:\n`{public_url}`\n\n"
-                f"_Hasil akan dikirim ke Chat ID yang diinput._"
+                f"Upload file besar (>20MB) via:\n{public_url}\n\n"
+                f"_Hasil akan dikirim ke chat ini._"
             )
         else:
             print("⚠️ [BG Task] Gradio started but no public URL available.")

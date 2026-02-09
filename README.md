@@ -64,8 +64,8 @@ The easiest and recommended way is to use Google Colab.
             
         # Optimization: T4 Runtime Saving
         os.environ['IDLE_SHUTDOWN_MINUTES'] = "10" # Default: 3
-        os.environ['IDLE_WARNING_MINUTES'] = "5"  # Default: 2
-        os.environ['IDLE_NOTIFY_MINUTES'] = "1"   # Default: 1
+        os.environ['IDLE_FINAL_WARNING_MINUTES'] = "5"  # Default: 2
+        os.environ['IDLE_FIRST_ALERT_MINUTES'] = "1"   # Default: 1
         
         print("✅ Loaded Keys and Timer")
         
