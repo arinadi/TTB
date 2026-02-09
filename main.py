@@ -518,7 +518,13 @@ async def perform_shutdown(reason: str):
         log("ERROR", f"Final notification failed: {e}")
     finally:
         log("SHUTDOWN", "Terminating runtime...")
-        runtime.unassign()
+        try:
+            if runtime:
+                runtime.unassign()
+            else:
+                log("SHUTDOWN", "Runtime object not found (local execution?)")
+        except Exception as e:
+            log("ERROR", f"Runtime shutdown failed: {e}")
 
 async def initialize_models_background():
     """Loads Whisper and initializes Gemini client in a background task."""
@@ -785,7 +791,32 @@ async def main():
     if not TELEGRAM_BOT_TOKEN:
         sys.exit("❌ FATAL: No TELEGRAM_BOT_TOKEN found. Exiting.")
 
-    application = Application.builder().token(TELEGRAM_BOT_TOKEN).request(request).build()
+    async def post_init(application: Application):
+        """Initializes background tasks after the application is ready."""
+        log("INIT", "Running post-init tasks...")
+        
+        # Background Tasks - start AFTER bot is ready to receive
+        application.create_task(queue_processor())
+        application.create_task(initialize_models_background())
+        
+        # Start Gradio web interface (async, like AI models)
+        if GRADIO_AVAILABLE:
+            application.create_task(initialize_gradio_background())
+        
+        if Config.ENABLE_IDLE_MONITOR:
+            idle_monitor.start()
+
+        # Send startup notification in background (non-blocking)
+        startup_message = (
+            f"🚀 *Bot Online*\n\n"
+            f"📌 Model: `{Config.MODEL_SIZE}` | Device: `{device.upper()}`\n"
+            f"📂 Max file: `{Config.BOT_FILESIZE_LIMIT}MB`\n"
+            f"🖥️ Web UI: Loading..."
+        )
+        asyncio.create_task(send_telegram_notification(application, startup_message))
+
+    # Build Application with post_init hook
+    application = Application.builder().token(TELEGRAM_BOT_TOKEN).request(request).post_init(post_init).build()
 
     # Initialize components
     idle_monitor = IdleMonitor(application, None)
@@ -859,29 +890,9 @@ async def main():
     application.add_error_handler(global_error_handler)
 
     # ⚡ FAST INIT: Initialize bot connection FIRST (before background tasks)
-    await application.initialize()
-    log("INIT", f"Bot online ({get_runtime()})")
+    # await application.initialize() -> Managed by run_polling
+    # log("INIT", f"Bot online ({get_runtime()})")
 
-    # Background Tasks - start AFTER bot is ready to receive
-    application.create_task(queue_processor())
-    application.create_task(initialize_models_background())
-    
-    # Start Gradio web interface (async, like AI models)
-    if GRADIO_AVAILABLE:
-        application.create_task(initialize_gradio_background())
-    
-    if Config.ENABLE_IDLE_MONITOR:
-        idle_monitor.start()
-
-    # Send startup notification in background (non-blocking)
-    startup_message = (
-        f"🚀 *Bot Online*\n\n"
-        f"📌 Model: `{Config.MODEL_SIZE}` | Device: `{device.upper()}`\n"
-        f"📂 Max file: `{Config.BOT_FILESIZE_LIMIT}MB`\n"
-        f"🖥️ Web UI: Loading..."
-    )
-    asyncio.create_task(send_telegram_notification(application, startup_message))
-    
     # Run polling - bot starts receiving messages immediately
     await application.run_polling(allowed_updates=Update.ALL_TYPES)
 
