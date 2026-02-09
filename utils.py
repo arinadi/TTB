@@ -69,47 +69,126 @@ async def summarize_text(transcript: str, gemini_client) -> str:
             log("ERROR", f"Gemini {FALLBACK_MODEL} also failed: {fallback_error}")
             return f"❌ Error generating summary: {fallback_error}"
 
+
+
 def format_duration(seconds: float) -> str:
     """Converts a duration in seconds to a human-readable 'Xm XXs' format."""
     if not isinstance(seconds, (int, float)) or seconds < 0: return "N/A"
     minutes, remaining_seconds = divmod(int(seconds), 60)
     return f"{minutes}m {remaining_seconds:02d}s"
 
-def format_transcription_with_pauses(segments: list, pause_thresh: float) -> str:
-    """Formats the Whisper segments with [mm:ss] timestamps at significant pauses."""
+def format_timestamp(seconds: float) -> str:
+    """Formats seconds into [HH:MM:SS] or [MM:SS]."""
+    if not isinstance(seconds, (int, float)) or seconds < 0:
+        return "[00:00]"
+    
+    seconds = int(seconds)
+    hours = seconds // 3600
+    minutes = (seconds % 3600) // 60
+    secs = seconds % 60
+    
+    if hours > 0:
+        return f"[{hours:02d}:{minutes:02d}:{secs:02d}]"
+    return f"[{minutes:02d}:{secs:02d}]"
+
+def format_transcription_with_pauses(segments: list, pause_thresh: float = 2.0) -> str:
+    """
+    Formats Whisper segments with timestamps at significant pauses.
+    
+    Optimized to:
+    - Handle both dictionary and object-like segments.
+    - Support HH:MM:SS timestamps for long audio.
+    - Filter empty or whitespace-only segments.
+    - Gracefully handle missing attributes.
+    """
     if not segments:
         return ""
 
-    def format_timestamp(seconds: float) -> str:
-        minutes = int(seconds // 60)
-        secs = int(seconds % 60)
-        return f"[{minutes:02d}:{secs:02d}]"
+    # Helper to safely access attributes (handles dict vs object)
+    def get_val(seg, key, default=0.0):
+        if hasattr(seg, key):
+            return getattr(seg, key)
+        elif isinstance(seg, dict):
+            return seg.get(key, default)
+        return default
 
-    # Handle both object (faster-whisper) and dict (legacy) access
-    def get_attr(seg, attr):
-        return getattr(seg, attr) if hasattr(seg, attr) else seg[attr]
-
-    first_segment = segments[0]
-    first_start = get_attr(first_segment, 'start')
-    first_text = get_attr(first_segment, 'text').strip()
-    
-    current_block = f"{format_timestamp(first_start)}\n{first_text}"
-    completed_blocks = []
-    
-    # Use 'end' if available, otherwise fallback to 'start' which is not ideal but safe
-    previous_end = get_attr(first_segment, 'end')
-
-    for segment in segments[1:]:
-        start = get_attr(segment, 'start')
-        text = get_attr(segment, 'text').strip()
+    # 1. Normalize and clean segments
+    clean_segments = []
+    for seg in segments:
+        text = str(get_val(seg, 'text', '')).strip()
+        if not text:
+            continue
+            
+        start = float(get_val(seg, 'start', 0.0))
+        end = float(get_val(seg, 'end', start)) # Fallback end to start if missing
         
-        if (start - previous_end) > pause_thresh:
-            completed_blocks.append(current_block)
-            current_block = f"{format_timestamp(start)}\n{text}"
+        clean_segments.append({
+            'start': start, 
+            'end': end, 
+            'text': text
+        })
+
+    if not clean_segments:
+        return ""
+
+    # 2. Build blocks based on pauses
+    blocks = []
+    current_block_start = clean_segments[0]['start']
+    current_text_parts = [clean_segments[0]['text']]
+    last_end = clean_segments[0]['end']
+
+    for seg in clean_segments[1:]:
+        gap = seg['start'] - last_end
+        
+        if gap > pause_thresh:
+            # Commit previous block
+            timestamp = format_timestamp(current_block_start)
+            block_content = " ".join(current_text_parts)
+            blocks.append(f"{timestamp}\n{block_content}")
+            
+            # Start new block
+            current_block_start = seg['start']
+            current_text_parts = [seg['text']]
         else:
-            current_block += " " + text
+            # Continue current block
+            current_text_parts.append(seg['text'])
         
-        previous_end = get_attr(segment, 'end')
+        last_end = seg['end']
 
-    completed_blocks.append(current_block)
-    return "\n\n".join(completed_blocks)
+    # 3. Commit final block
+    if current_text_parts:
+        timestamp = format_timestamp(current_block_start)
+        block_content = " ".join(current_text_parts)
+        blocks.append(f"{timestamp}\n{block_content}")
+
+    return "\n\n".join(blocks)
+
+def format_transcription_native(segments: list) -> str:
+    """
+    Formats Whisper segments exactly as output by the model (with VAD enabled).
+    It simply lists each segment with its timestamp, relying on VAD for segmentation.
+    Format: [HH:MM:SS] Text
+    """
+    if not segments:
+        return ""
+    
+    # Helper to safely access attributes (handles dict vs object)
+    def get_val(seg, key, default=0.0):
+        if hasattr(seg, key):
+            return getattr(seg, key)
+        elif isinstance(seg, dict):
+            return seg.get(key, default)
+        return default
+
+    lines = []
+    for seg in segments:
+        text = str(get_val(seg, 'text', '')).strip()
+        if not text:
+            continue
+            
+        start = float(get_val(seg, 'start', 0.0))
+        # Format: [HH:MM:SS] Text
+        timestamp = format_timestamp(start)
+        lines.append(f"{timestamp} {text}")
+        
+    return "\n".join(lines)

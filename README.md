@@ -14,11 +14,11 @@ Specifically designed to run on **Google Colab** (Free GPU) using the "Vibe Codi
 
 ## ✨ Key Features
 
--   **Accurate Transcription**: Uses Whisper models (default: `large-v3`) for best results.
+-   **Accurate Transcription**: Uses **faster-whisper** (`large-v3`) with **VAD (Voice Activity Detection)** enabled to automatically filter silence (min 500ms).
 -   **Smart Summarization**: Integrates Google Gemini 2.5 Flash to summarize transcripts into key points (Indonesian).
 -   **Large File Support**: Handles audio/video files up to Telegram's limit, and supports **Multi-part ZIP archives** (e.g., `file.zip.001`) for very large files.
--   **GPU Acceleration**: Optimized for fast performance on GPU (CUDA), with CPU fallback.
--   **Smart Formatting**: Text output with smart timestamps based on speech pauses.
+-   **GPU Acceleration**: Optimized for fast performance on GPU (CUDA), with FP16/INT8 dynamic loading.
+-   **Native Formatting**: Text output uses **native VAD segments** with precise timestamps (`[HH:MM:SS]` or `[MM:SS]`).
 -   **Task Management**: Queue system to handle multiple requests sequentially.
 
 ## 🚀 How to Run (Google Colab)
@@ -66,6 +66,10 @@ The easiest and recommended way is to use Google Colab.
         os.environ['IDLE_SHUTDOWN_MINUTES'] = "10" # Default: 3
         os.environ['IDLE_FINAL_WARNING_MINUTES'] = "5"  # Default: 2
         os.environ['IDLE_FIRST_ALERT_MINUTES'] = "1"   # Default: 1
+        
+        # Advanced: Whisper Tweaks
+        # os.environ['MODEL_SIZE'] = "large-v3"
+        # os.environ['USE_FP16'] = "auto"
         
         print("✅ Loaded Keys and Timer")
         
@@ -155,6 +159,7 @@ If you have your own GPU (NVIDIA) or want to run on CPU (slower):
 
 You can change default settings inside `main.py` (`Config` class):
 -   `MODEL_SIZE`: `large-v3`, `medium`, `small`, etc.
+-   `USE_FP16`: Precision config (`auto`, `True`, `False`).
 -   `MAX_AUDIO_DURATION_MINUTES`: Audio duration limit (default: 90 minutes).
 -   `ENABLE_IDLE_MONITOR`: Automatically turn off Colab runtime if idle (saves resources).
 

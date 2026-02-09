@@ -586,12 +586,24 @@ def run_transcription_process(job: TranscriptionJob) -> tuple[str, str]:
     
     # Run transcription
     # faster-whisper returns a generator, so we must iterate to process
-    segments_generator, info = model.transcribe(job.local_filepath, **transcribe_options)
+    # Enable VAD filter to remove silence
+    vad_parameters = dict(min_silence_duration_ms=500)
+    segments_generator, info = model.transcribe(
+        job.local_filepath, 
+        vad_filter=True,
+        vad_parameters=vad_parameters,
+        **transcribe_options
+    )
     
     # Convert generator to list to ensure full processing
     segments = list(segments_generator)
     
-    formatted_text = format_transcription_with_pauses(segments, Config.PAUSE_THRESHOLD)
+    # Use native formatting (VAD controlled)
+    # If users prefer the old pause-based logic, they can switch back here
+    # formatted_text = format_transcription_with_pauses(segments, Config.PAUSE_THRESHOLD)
+    from utils import format_transcription_native
+    formatted_text = format_transcription_native(segments)
+    
     log("WHISPER", f"[{job.job_id}] Done: {len(segments)} segments, lang={info.language} ({info.language_probability:.0%})")
     
     return formatted_text, info.language if info.language else 'N/A'
