@@ -559,7 +559,7 @@ async def initialize_models_background():
         await perform_shutdown("AI Model Loading Failed")
 
 async def initialize_gradio_background():
-    """Launches Gradio web server in background and notifies Telegram with URL."""
+    """Launches Gradio web server in background and notifies Telegram with pinned URL."""
     if not GRADIO_AVAILABLE:
         log("GRADIO", "Not available, skipping")
         return
@@ -572,10 +572,29 @@ async def initialize_gradio_background():
         
         if public_url:
             log("GRADIO", f"Online: {public_url}")
-            await send_telegram_notification(
-                application,
-                f"🌐 *Web UI*\n{public_url}\n_For files >20MB_"
+            
+            # Unpin all previous messages (removes old Gradio URL pin)
+            try:
+                await application.bot.unpin_all_chat_messages(chat_id=TELEGRAM_CHAT_ID)
+                log("GRADIO", "Unpinned all previous messages")
+            except Exception as e:
+                log("GRADIO", f"Unpin failed (OK): {e}")
+            
+            # Send and pin new Gradio URL
+            msg = await application.bot.send_message(
+                chat_id=TELEGRAM_CHAT_ID,
+                text=f"🌐 *Web UI*\n{public_url}\n_For files >20MB_",
+                parse_mode=ParseMode.MARKDOWN
             )
+            try:
+                await application.bot.pin_chat_message(
+                    chat_id=TELEGRAM_CHAT_ID,
+                    message_id=msg.message_id,
+                    disable_notification=True
+                )
+                log("GRADIO", "URL pinned")
+            except Exception as e:
+                log("GRADIO", f"Pin failed: {e}")
         else:
             log("GRADIO", "Started but no public URL")
     except Exception as e:
