@@ -573,28 +573,39 @@ async def initialize_gradio_background():
         if public_url:
             log("GRADIO", f"Online: {public_url}")
             
-            # Unpin all previous messages (removes old Gradio URL pin)
+            # Check if bot has permission to pin messages
+            can_pin = False
             try:
-                await application.bot.unpin_all_chat_messages(chat_id=TELEGRAM_CHAT_ID)
-                log("GRADIO", "Unpinned all previous messages")
-            except Exception as e:
-                log("GRADIO", f"Unpin failed (OK): {e}")
+                bot_member = await application.bot.get_chat_member(chat_id=TELEGRAM_CHAT_ID, user_id=application.bot.id)
+                can_pin = bot_member.status in ["administrator", "creator"] and (
+                    bot_member.status == "creator" or bot_member.can_pin_messages
+                )
+            except Exception:
+                pass  # Silently fail permission check
             
-            # Send and pin new Gradio URL
+            # Send Gradio URL message
             msg = await application.bot.send_message(
                 chat_id=TELEGRAM_CHAT_ID,
                 text=f"🌐 *Web UI*\n{public_url}\n_For files >20MB_",
                 parse_mode=ParseMode.MARKDOWN
             )
-            try:
-                await application.bot.pin_chat_message(
-                    chat_id=TELEGRAM_CHAT_ID,
-                    message_id=msg.message_id,
-                    disable_notification=True
-                )
-                log("GRADIO", "URL pinned")
-            except Exception as e:
-                log("GRADIO", f"Pin failed: {e}")
+            
+            # Only attempt pin/unpin if bot has permission
+            if can_pin:
+                try:
+                    await application.bot.unpin_all_chat_messages(chat_id=TELEGRAM_CHAT_ID)
+                except Exception:
+                    pass  # Ignore unpin errors (no previous pins is OK)
+                
+                try:
+                    await application.bot.pin_chat_message(
+                        chat_id=TELEGRAM_CHAT_ID,
+                        message_id=msg.message_id,
+                        disable_notification=True
+                    )
+                    log("GRADIO", "URL pinned")
+                except Exception:
+                    pass  # Silently skip if pin fails
         else:
             log("GRADIO", "Started but no public URL")
     except Exception as e:
