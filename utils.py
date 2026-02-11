@@ -189,6 +189,6 @@ def format_transcription_native(segments: list) -> str:
         start = float(get_val(seg, 'start', 0.0))
         # Format: [HH:MM:SS] Text
         timestamp = format_timestamp(start)
-        lines.append(f"{timestamp} {text}")
+        lines.append(f"{timestamp}\n{text}")
         
     return "\n".join(lines)
