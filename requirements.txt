@@ -1,7 +1,11 @@
 ffmpeg-python
 python-telegram-bot
-google-genai
-faster-whisper
-gradio>=4.0.0
-nest_asyncio
+requests
 werkzeug
+google-genai
+tqdm
+more-itertools
+nest_asyncio
+faster-whisper
+httpx>=0.28.1
+gradio>=4.0.0
