@@ -65,8 +65,9 @@ async def summarize_text(transcript: str, gemini_client) -> str:
         
         "RETOUCH TRANSCRIPT:\n"
         "⚠️ WARNING: Bagian ini adalah hasil perbaikan AI dan mengandung asumsi.\n\n"
-        "[Perbaiki typo dan kesalahan penulisan pada transkrip tanpa mengubah urutan kalimat atau struktur aslinya. Runtutan teks harus tetap sama seperti aslinya.]\n\n"
-        
+        "[Perbaiki typo, kesalahan penulisan, serta tanda baca (seperti tanda tanya) pada transkrip. "
+        "Berikan jeda baris (enter) di setiap akhir paragraf agar teks lebih mudah dibaca. "
+        "Pastikan urutan kalimat dan struktur asli teks tetap sama.]\n\n"
         "--- TRANSKRIP ASLI [JANGAN KIRIM KEMBALI] ---\n"
         f"```\n{transcript}\n```"
     )
