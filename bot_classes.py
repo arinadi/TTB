@@ -19,6 +19,7 @@ import ffmpeg
 from config import Config, TELEGRAM_CHAT_ID
 from utils import log
 
+
 @dataclass
 class TranscriptionJob:
     """A data class to hold all information about a single transcription job."""
@@ -51,6 +52,7 @@ class TranscriptionJob:
         log("JOB", f"[{job.job_id}] Created: {job.original_filename} (by {job.author_display_name})")
         return job
 
+
 class IdleMonitor:
     """Monitors bot activity and triggers alerts or shutdown when idle.
     
@@ -71,7 +73,8 @@ class IdleMonitor:
         self.alerts_sent = {'first_alert': False, 'final_warning': False}
         self.last_extend_time = 0
         self._task: Optional[asyncio.Task] = None
-        log("INIT", f"IdleMonitor ready (alert={Config.IDLE_FIRST_ALERT_MINUTES}m, warn={Config.IDLE_FINAL_WARNING_MINUTES}m, shutdown={Config.IDLE_SHUTDOWN_MINUTES}m)")
+        log("INIT", f"IdleMonitor ready (alert={Config.IDLE_FIRST_ALERT_MINUTES}m, "
+                    f"warn={Config.IDLE_FINAL_WARNING_MINUTES}m, shutdown={Config.IDLE_SHUTDOWN_MINUTES}m)")
 
     def start(self):
         if not self._task or self._task.done():
@@ -99,6 +102,49 @@ class IdleMonitor:
             return True
         return False
 
+    async def _handle_first_alert(self, remaining_minutes: float):
+        alert_msg = f"⏸️ Idle. Shutdown in `{int(remaining_minutes)}m`"
+        keyboard = [[InlineKeyboardButton("⏳ +5m", callback_data="extend_idle")]]
+        await self.app.bot.send_message(
+            chat_id=TELEGRAM_CHAT_ID,
+            text=alert_msg,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode=ParseMode.MARKDOWN
+        )
+        self.alerts_sent['first_alert'] = True
+        log("IDLE", "First alert sent")
+
+    async def _handle_final_warning(self, remaining_minutes: float):
+        warn_msg = f"⚠️ Shutdown in `{int(remaining_minutes)}m`!"
+        try:
+            await self.app.bot.send_message(
+                chat_id=TELEGRAM_CHAT_ID,
+                text=warn_msg,
+                parse_mode=ParseMode.MARKDOWN
+            )
+        except Exception as e:
+            log("ERROR", f"Telegram notification failed: {e}")
+        self.alerts_sent['final_warning'] = True
+        log("IDLE", "Final warning sent")
+
+    async def _handle_shutdown(self):
+        self.shutdown_imminent = True
+        shutdown_msg = f"🔴 Shutting down (idle {Config.IDLE_SHUTDOWN_MINUTES}m)"
+        try:
+            await self.app.bot.send_message(
+                chat_id=TELEGRAM_CHAT_ID,
+                text=shutdown_msg,
+                parse_mode=ParseMode.MARKDOWN
+            )
+        except Exception as e:
+            log("ERROR", f"Telegram notification failed: {e}")
+        log("IDLE", "Shutdown triggered")
+        if self.shutdown_callback:
+            if asyncio.iscoroutinefunction(self.shutdown_callback):
+                await self.shutdown_callback("Automatic Idle Shutdown")
+            else:
+                self.shutdown_callback("Automatic Idle Shutdown")
+
     async def _monitor_loop(self):
         while True:
             await asyncio.sleep(60)
@@ -124,44 +170,24 @@ class IdleMonitor:
                     elapsed_minutes = Config.IDLE_SHUTDOWN_MINUTES - remaining_minutes
                     log("IDLE", f"Elapsed: {elapsed_minutes:.1f}m, Remaining: {remaining_minutes:.1f}m")
                     
-                    # 1. FIRST ALERT when elapsed >= IDLE_FIRST_ALERT_MINUTES (e.g., 1 min idle)
+                    # 1. FIRST ALERT
                     if elapsed_minutes >= Config.IDLE_FIRST_ALERT_MINUTES and not self.alerts_sent['first_alert']:
-                        alert_msg = f"⏸️ Idle. Shutdown in `{int(remaining_minutes)}m`"
-                        keyboard = [[InlineKeyboardButton("⏳ +5m", callback_data="extend_idle")]]
-                        await self.app.bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=alert_msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.MARKDOWN)
-                        self.alerts_sent['first_alert'] = True
-                        log("IDLE", "First alert sent")
+                        await self._handle_first_alert(remaining_minutes)
                     
-                    # 2. FINAL WARNING when elapsed >= IDLE_FINAL_WARNING_MINUTES (e.g., 5 min idle)
+                    # 2. FINAL WARNING
                     if elapsed_minutes >= Config.IDLE_FINAL_WARNING_MINUTES and not self.alerts_sent['final_warning']:
-                        warn_msg = f"⚠️ Shutdown in `{int(remaining_minutes)}m`!"
-                        try:
-                            await self.app.bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=warn_msg, parse_mode=ParseMode.MARKDOWN)
-                        except Exception as e:
-                            log("ERROR", f"Telegram notification failed: {e}")
-                        self.alerts_sent['final_warning'] = True
-                        log("IDLE", "Final warning sent")
+                        await self._handle_final_warning(remaining_minutes)
                     
-                    # 3. SHUTDOWN when remaining <= 0
+                    # 3. SHUTDOWN
                     if remaining_minutes <= 0:
-                        self.shutdown_imminent = True
-                        shutdown_msg = f"🔴 Shutting down (idle {Config.IDLE_SHUTDOWN_MINUTES}m)"
-                        try:
-                            await self.app.bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=shutdown_msg, parse_mode=ParseMode.MARKDOWN)
-                        except Exception as e:
-                            log("ERROR", f"Telegram notification failed: {e}")
-                        log("IDLE", "Shutdown triggered")
-                        if self.shutdown_callback:
-                            if asyncio.iscoroutinefunction(self.shutdown_callback):
-                                await self.shutdown_callback("Automatic Idle Shutdown")
-                            else:
-                                self.shutdown_callback("Automatic Idle Shutdown")
+                        await self._handle_shutdown()
                 else:
                     self.reset()
             except Exception as e:
                 log("ERROR", f"IdleMonitor: {e}")
                 import traceback
                 traceback.print_exc()
+
 
 class JobManager:
     """Manages the queue and state of all transcription jobs."""
@@ -216,6 +242,7 @@ class JobManager:
     def get_queued_jobs(self) -> List[TranscriptionJob]:
         return [job for job in self.job_registry.values() if job.status == 'queued']
 
+
 class FilesHandler:
     """Handles all incoming file attachments, including multi-part ZIP archives."""
     COMBINE_TIMEOUT_SECONDS = 30
@@ -251,11 +278,13 @@ class FilesHandler:
             filename_str = f"`{filename_override or 'the uploaded file'}`"
             await message.reply_text(f"❌ Failed to process {filename_str}. The file may be corrupt or in an unsupported format.")
             print(f"Error validating file {filename_str}: {e}", file=sys.stderr)
-            if os.path.exists(local_path): os.remove(local_path)
+            if os.path.exists(local_path): 
+                os.remove(local_path)
 
     async def handle_files(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         message = update.effective_message
-        if not (message and message.effective_attachment): return
+        if not (message and message.effective_attachment): 
+            return
 
         attachment = message.effective_attachment
 
@@ -357,7 +386,8 @@ class FilesHandler:
             with zipfile.ZipFile(zip_path, 'r') as zip_ref:
                 file_list = [f for f in zip_ref.namelist() if not f.startswith(('__MACOSX', '.')) and not f.endswith('/')]
                 if not file_list:
-                    await status_message.edit_text(f"⚠️ No valid files found inside `{zip_name}`."); return
+                    await status_message.edit_text(f"⚠️ No valid files found inside `{zip_name}`.")
+                    return
 
                 await status_message.edit_text(f"Found {len(file_list)} files in `{zip_name}`. Validating and queueing...", parse_mode=ParseMode.MARKDOWN)
                 await asyncio.to_thread(zip_ref.extractall, extract_dir)

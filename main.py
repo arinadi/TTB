@@ -12,13 +12,8 @@ import sys
 import os
 import asyncio
 import gc
-import re
-import shutil
 import time
-import uuid
-import zipfile
-from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import Optional
 
 # --- Local Imports ---
 import config
@@ -26,8 +21,6 @@ from config import Config
 from utils import (
     summarize_text, 
     format_duration, 
-    format_transcription_with_pauses, 
-    format_transcription_native,
     log, 
     get_runtime
 )
@@ -37,7 +30,7 @@ from bot_classes import TranscriptionJob, IdleMonitor, JobManager, FilesHandler
 try:
     from faster_whisper import WhisperModel
     import torch
-    import ffmpeg
+
     from google import genai
     import telegram
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
@@ -131,7 +124,8 @@ async def send_telegram_notification(app: Application, message: str):
 async def perform_shutdown(reason: str):
     """Notifies admins and safely terminates the Colab runtime."""
     global SHUTDOWN_IN_PROGRESS
-    if SHUTDOWN_IN_PROGRESS: return
+    if SHUTDOWN_IN_PROGRESS:
+        return
     SHUTDOWN_IN_PROGRESS = True
     uptime_str = get_runtime()
     log("SHUTDOWN", f"Initiated. Reason: {reason}")
@@ -298,7 +292,8 @@ async def queue_processor():
 
         if job.status == 'cancelled':
             log("WORKER", f"[{job.job_id}] Skipped (cancelled)")
-            if os.path.exists(job.local_filepath): os.remove(job.local_filepath)
+            if os.path.exists(job.local_filepath):
+                os.remove(job.local_filepath)
             job_manager.job_queue.task_done()
             job_manager.complete_job(job.job_id)
             continue
@@ -316,7 +311,8 @@ async def queue_processor():
             safe_name = secure_filename(base_name)[:50]
             ts_filename = f"{TRANSCRIPT_FILENAME_PREFIX}_({duration_str.replace(' ', '')})_{safe_name}.txt"
             ts_filepath = os.path.join(TRANSCRIPT_FOLDER, ts_filename)
-            with open(ts_filepath, "w", encoding="utf-8") as f: f.write(transcript_text)
+            with open(ts_filepath, "w", encoding="utf-8") as f:
+                f.write(transcript_text)
 
             # PASSING GEMINI CLIENT HERE
             summary_text = await summarize_text(transcript_text, gemini_client)
@@ -324,7 +320,8 @@ async def queue_processor():
             if job.status == 'cancelled': raise asyncio.CancelledError("Job cancelled during summarization.")
             su_filename = f"{SUMMARY_FILENAME_PREFIX}_({duration_str.replace(' ', '')})_{safe_name}.txt"
             su_filepath = os.path.join(TRANSCRIPT_FOLDER, su_filename)
-            with open(su_filepath, "w", encoding="utf-8") as f: f.write(summary_text)
+            with open(su_filepath, "w", encoding="utf-8") as f:
+                f.write(summary_text)
 
             processing_duration_str = format_duration(time.time() - start_time)
             log("JOB", f"[{job.job_id}] Done in {processing_duration_str}")
@@ -428,20 +425,20 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data.startswith("cancel_"):
         job_id = data.split("_")[1]
         cancelled, job_name = await job_manager.cancel_job(job_id)
-        msg = f"✅ Job `{job_name}` was cancelled." if cancelled else f"❌ Could not cancel job."
+        msg = f"✅ Job `{job_name}` was cancelled." if cancelled else "❌ Could not cancel job."
         await query.edit_message_text(msg, reply_markup=None, parse_mode=ParseMode.MARKDOWN)
     elif data == "extend_idle":
         # Rate limit check (5 minutes = 300 seconds)
         if time.time() - idle_monitor.last_extend_time < 300:
-             await query.answer("⏳ Please wait 5 minutes before extending again.", show_alert=True)
-             return
+            await query.answer("⏳ Please wait 5 minutes before extending again.", show_alert=True)
+            return
         
         if idle_monitor.extend_timer(5):
-             idle_monitor.last_extend_time = time.time()
-             new_text = f"✅ *Idle Extended*\nTimer added +5 minutes.\n_Action by {query.from_user.first_name}_"
-             await query.edit_message_text(new_text, parse_mode=ParseMode.MARKDOWN)
+            idle_monitor.last_extend_time = time.time()
+            new_text = f"✅ *Idle Extended*\nTimer added +5 minutes.\n_Action by {query.from_user.first_name}_"
+            await query.edit_message_text(new_text, parse_mode=ParseMode.MARKDOWN)
         else:
-             await query.edit_message_text("ℹ️ Bot is already active, no need to extend.", parse_mode=ParseMode.MARKDOWN)
+            await query.edit_message_text("ℹ️ Bot is already active, no need to extend.", parse_mode=ParseMode.MARKDOWN)
 
 # ------------------------------------------------------------------------------
 # SECTION 7: MAIN ENTRY POINT
@@ -581,7 +578,7 @@ if __name__ == "__main__":
             try:
                 loop = asyncio.new_event_loop()
                 loop.run_until_complete(send_telegram_notification(application, f"❌ *CRASH REPORT:*\nBot crashed with error: `{e}`"))
-            except:
+            except Exception:
                 pass
     finally:
         if IS_COLAB:

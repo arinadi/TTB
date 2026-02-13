@@ -1,8 +1,6 @@
-import asyncio
-import sys
-import time
-import os
 from datetime import datetime
+import asyncio
+import time
 import config
 
 # --- Logging Utilities (Merged from log_utils.py) ---
@@ -109,7 +107,15 @@ def format_timestamp(seconds: float) -> str:
     
     if hours > 0:
         return f"[{hours:02d}:{minutes:02d}:{secs:02d}]"
-    return f"[{minutes:02d}:{secs:02d}]"
+    return f"{minutes:02d}:{secs:02d}"
+
+def get_val(seg, key, default=0.0):
+    """Helper to safely access attributes (handles dict vs object)."""
+    if hasattr(seg, key):
+        return getattr(seg, key)
+    elif isinstance(seg, dict):
+        return seg.get(key, default)
+    return default
 
 def format_transcription_with_pauses(segments: list, pause_thresh: float = 2.0) -> str:
     """
@@ -117,14 +123,6 @@ def format_transcription_with_pauses(segments: list, pause_thresh: float = 2.0) 
     """
     if not segments:
         return ""
-
-    # Helper to safely access attributes (handles dict vs object)
-    def get_val(seg, key, default=0.0):
-        if hasattr(seg, key):
-            return getattr(seg, key)
-        elif isinstance(seg, dict):
-            return seg.get(key, default)
-        return default
 
     # 1. Normalize and clean segments
     clean_segments = []
@@ -185,23 +183,12 @@ def format_transcription_native(segments: list) -> str:
     if not segments:
         return ""
     
-    # Helper to safely access attributes (handles dict vs object)
-    def get_val(seg, key, default=0.0):
-        if hasattr(seg, key):
-            return getattr(seg, key)
-        elif isinstance(seg, dict):
-            return seg.get(key, default)
-        return default
-
     lines = []
     for seg in segments:
         text = str(get_val(seg, 'text', '')).strip()
         if not text:
             continue
             
-        start = float(get_val(seg, 'start', 0.0))
-        # Format: Text only (User requested removal of [HH:MM:SS])
-        # timestamp = format_timestamp(start)
         lines.append(f"{text}")
         
     return "\n\n".join(lines)

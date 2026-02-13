@@ -17,7 +17,7 @@ except ImportError:
 from utils import log
 
 if TYPE_CHECKING:
-    from main import JobManager, TranscriptionJob
+    from main import JobManager
 
 # Module-level state
 gradio_app: Optional["gr.Blocks"] = None

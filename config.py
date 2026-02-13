@@ -7,9 +7,9 @@ import time
 INIT_START = float(os.getenv('INIT_START', time.time()))
 
 # --- Core Secrets ---
-TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN') # Token from BotFather
-TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID')     # Admin Chat ID (integer)
-GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')         # Google AI Studio Key
+TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')  # Token from BotFather
+TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID')      # Admin Chat ID (integer)
+GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')          # Google AI Studio Key
 
 if TELEGRAM_CHAT_ID:
     TELEGRAM_CHAT_ID = int(TELEGRAM_CHAT_ID)
