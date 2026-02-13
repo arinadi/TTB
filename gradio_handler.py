@@ -214,7 +214,7 @@ async def launch_gradio_async(share: bool = True) -> Optional[str]:
     Launch Gradio server asynchronously.
     Returns the public URL if share=True.
     """
-    global gradio_app
+
     
     if gr is None:
         return None
@@ -259,7 +259,7 @@ async def launch_gradio_async(share: bool = True) -> Optional[str]:
 
 async def shutdown_gradio():
     """Shutdown Gradio server gracefully."""
-    global gradio_app
+
     if gradio_app:
         try:
             gradio_app.close()

@@ -513,7 +513,7 @@ async def main():
     MAX_TRANSIENT_RETRIES = 2
     
     async def global_error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
-        nonlocal _transient_error_counts
+
         error = context.error
         error_name = type(error).__name__
         print(f"❌ Exception while handling an update: {error_name}: {error}")
