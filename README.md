@@ -148,7 +148,7 @@ If you have your own GPU (NVIDIA) or want to run on CPU (slower):
 -   `config.py`: Centralized configuration and secrets management.
 -   `utils.py`: Helper functions for text formatting, logging, and Gemini API wrapper.
 -   `gradio_handler.py`: Optional Gradio web interface for large file uploads.
--   `requirements.txt`: Optimized list for Colab.
+-   `requirements.txt`: Optimized list for Colab (excludes pre-installed libs like `requests`, `httpx`, `tqdm`).
 -   `requirements_local.txt`: Full list for local dev.
 
 ## 🛠 Advanced Configuration

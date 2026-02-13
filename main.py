@@ -597,7 +597,7 @@ async def initialize_gradio_background():
 def run_transcription_process(job: TranscriptionJob) -> tuple[str, str]:
     """Runs the blocking Whisper transcription in a separate thread."""
     # Note: This runs in a thread, so we use print directly (log_utils works here too)
-    from log_utils import log
+    from utils import log
     log("WHISPER", f"[{job.job_id}] Transcribing {job.original_filename}...")
     
     transcribe_options = {
