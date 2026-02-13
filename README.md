@@ -62,15 +62,11 @@ The easiest and recommended way is to use Google Colab.
         if hf_token:
             os.environ['HF_TOKEN'] = hf_token
             
-        # Optimization: T4 Runtime Saving
-        os.environ['IDLE_SHUTDOWN_MINUTES'] = "10" # Default: 3
-        os.environ['IDLE_FINAL_WARNING_MINUTES'] = "5"  # Default: 2
-        os.environ['IDLE_FIRST_ALERT_MINUTES'] = "1"   # Default: 1
-        
-        # Advanced: Whisper Customization
-        # os.environ['WHISPER_MODEL'] = "large-v3"    # Override 'large-v2'
-        # os.environ['WHISPER_PATIENCE'] = "2.0"      # "Time to think" factor
-        
+        # Optional: HuggingFace Token (to avoid rate limits/warnings)
+        hf_token = userdata.get('HF_TOKEN')
+        if hf_token:
+            os.environ['HF_TOKEN'] = hf_token
+            
         print("✅ Loaded Keys and Timer")
         
     except Exception as e:
