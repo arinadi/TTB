@@ -75,7 +75,7 @@ if not GEMINI_API_KEY:
 
 # Constants
 TRANSCRIPT_FILENAME_PREFIX = "TS"
-SUMMARY_FILENAME_PREFIX = "SU"
+SUMMARY_FILENAME_PREFIX = "AI"
 
 # ------------------------------------------------------------------------------
 # SECTION 2: ENVIRONMENT SETUP
@@ -113,6 +113,7 @@ idle_monitor: Optional[IdleMonitor] = None
 job_manager: Optional[JobManager] = None
 files_handler: Optional[FilesHandler] = None
 SHUTDOWN_IN_PROGRESS = False
+STARTUP_MESSAGE_ID: Optional[int] = None
 
 async def send_telegram_notification(app: Application, message: str):
     """Sends a formatted message to the designated admin chat."""
@@ -176,9 +177,10 @@ async def initialize_models_background():
             log("INIT", "Gemini ready")
 
         models_ready_event.set()
-        gemini_status = "✓" if gemini_client else "✗"
+        
+        # Update startup message
+        await update_startup_message()
 
-        await send_telegram_notification(application, f"✅ *Ready!* `{Config.WHISPER_MODEL}` loaded in `{get_runtime()}`\nGemini: {gemini_status}")
     except Exception as e:
         log("ERROR", f"Model loading failed: {e}")
         await send_telegram_notification(application, f"❌ *FATAL:* Model loading failed: {e}")
@@ -198,44 +200,60 @@ async def initialize_gradio_background():
         
         if public_url:
             log("GRADIO", f"Online: {public_url}")
+            # Update startup message with URL
+            await update_startup_message(public_url)
             
-            # Check if bot has permission to pin messages
-            can_pin = False
-            try:
-                bot_member = await application.bot.get_chat_member(chat_id=TELEGRAM_CHAT_ID, user_id=application.bot.id)
-                can_pin = bot_member.status in ["administrator", "creator"] and (
-                    bot_member.status == "creator" or bot_member.can_pin_messages
-                )
-            except Exception:
-                pass  # Silently fail permission check
-            
-            # Send Gradio URL message
-            msg = await application.bot.send_message(
-                chat_id=TELEGRAM_CHAT_ID,
-                text=f"🌐 *Web UI*\n{public_url}\n_For files >20MB_",
-                parse_mode=ParseMode.MARKDOWN
-            )
-            
-            # Only attempt pin/unpin if bot has permission
-            if can_pin:
+            # Pin the startup message
+            if STARTUP_MESSAGE_ID:
                 try:
                     await application.bot.unpin_all_chat_messages(chat_id=TELEGRAM_CHAT_ID)
-                except Exception:
-                    pass  # Ignore unpin errors (no previous pins is OK)
-                
-                try:
                     await application.bot.pin_chat_message(
                         chat_id=TELEGRAM_CHAT_ID,
-                        message_id=msg.message_id,
+                        message_id=STARTUP_MESSAGE_ID,
                         disable_notification=True
                     )
-                    log("GRADIO", "URL pinned")
                 except Exception:
-                    pass  # Silently skip if pin fails
+                    pass
         else:
             log("GRADIO", "Started but no public URL")
     except Exception as e:
         log("ERROR", f"Gradio failed: {e}")
+
+async def update_startup_message(gradio_url: str = None):
+    """Updates the persistent startup message with current status."""
+    if not STARTUP_MESSAGE_ID:
+        return
+
+    ai_status = "✅ Ready" if models_ready_event.is_set() else "⏳ Loading..."
+    gemini_icon = "✓" if gemini_client else "✗"
+    
+    # If gradio_url is not passed, try to fetch it if it exists
+    if not gradio_url and GRADIO_AVAILABLE and gradio_handler.gradio_app:
+        if hasattr(gradio_handler.gradio_app, 'share_url'):
+            gradio_url = gradio_handler.gradio_app.share_url
+
+    gradio_text = f"🌐 *Web UI:* {gradio_url}" if gradio_url else "🌐 *Web UI:* Loading..."
+    
+    msg_text = (
+        f"🚀 *Bot Online*\n\n"
+        f"🤖 *AI Model:* `{Config.WHISPER_MODEL}`\n"
+        f"Status: {ai_status} (Gemini: {gemini_icon})\n\n"
+        f"{gradio_text}\n"
+        f"📂 Max file: `{Config.BOT_FILESIZE_LIMIT}MB`"
+    )
+    
+    keyboard = [[InlineKeyboardButton("🔌 Shutdown Bot", callback_data="shutdown_bot")]]
+    
+    try:
+        await application.bot.edit_message_text(
+            chat_id=TELEGRAM_CHAT_ID,
+            message_id=STARTUP_MESSAGE_ID,
+            text=msg_text,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+    except Exception as e:
+        log("ERROR", f"Failed to update startup message: {e}")
 
 
 def run_transcription_process(job: TranscriptionJob) -> tuple[str, str]:
@@ -314,26 +332,41 @@ async def queue_processor():
             with open(ts_filepath, "w", encoding="utf-8") as f:
                 f.write(transcript_text)
 
-            # PASSING GEMINI CLIENT HERE
-            summary_text = await summarize_text(transcript_text, gemini_client)
-            
-            if job.status == 'cancelled': raise asyncio.CancelledError("Job cancelled during summarization.")
-            su_filename = f"{SUMMARY_FILENAME_PREFIX}_({duration_str.replace(' ', '')})_{safe_name}.txt"
-            su_filepath = os.path.join(TRANSCRIPT_FOLDER, su_filename)
-            with open(su_filepath, "w", encoding="utf-8") as f:
-                f.write(summary_text)
-
+            # 1. Immediate Notification & TS File
             processing_duration_str = format_duration(time.time() - start_time)
-            log("JOB", f"[{job.job_id}] Done in {processing_duration_str}")
+            log("JOB", f"[{job.job_id}] Transcription done in {processing_duration_str}")
+            
             result_text = (f"✅ *Done!* `{job.original_filename}`\n"
                            f"⏱️ {duration_str} audio → {processing_duration_str} process\n"
-                           f"🌐 Lang: {detected_language.upper()}")
+                           f"🌐 Lang: {detected_language.upper()}\n"
+                           f"🤖 Generating AI Summary...")
 
             await application.bot.send_message(job.chat_id, result_text, parse_mode=ParseMode.MARKDOWN, reply_to_message_id=job.message_id)
-            with open(su_filepath, 'rb') as su_file:
-                await application.bot.send_document(job.chat_id, document=su_file, filename=su_filename, reply_to_message_id=job.message_id)
+            
             with open(ts_filepath, 'rb') as ts_file:
                 await application.bot.send_document(job.chat_id, document=ts_file, filename=ts_filename, reply_to_message_id=job.message_id)
+
+            # 2. AI Summarization (Async/Separate Step)
+            if gemini_client:
+                try:
+                    log("JOB", f"[{job.job_id}] Generating AI summary...")
+                    summary_text = await summarize_text(transcript_text, gemini_client)
+                    
+                    if job.status == 'cancelled': raise asyncio.CancelledError("Job cancelled during summarization.")
+                    
+                    su_filename = f"{SUMMARY_FILENAME_PREFIX}_({duration_str.replace(' ', '')})_{safe_name}.txt"
+                    su_filepath = os.path.join(TRANSCRIPT_FOLDER, su_filename)
+                    with open(su_filepath, "w", encoding="utf-8") as f:
+                        f.write(summary_text)
+                        
+                    with open(su_filepath, 'rb') as su_file:
+                        await application.bot.send_document(job.chat_id, document=su_file, filename=su_filename, reply_to_message_id=job.message_id)
+                    
+                    log("JOB", f"[{job.job_id}] AI Summary sent.")
+                except Exception as e:
+                    log("ERROR", f"AI Summary failed: {e}")
+                    await application.bot.send_message(job.chat_id, f"⚠️ AI Summary Failed: {e}", reply_to_message_id=job.message_id)
+            
             job.status = "completed"
 
         except asyncio.CancelledError as e:
@@ -344,7 +377,13 @@ async def queue_processor():
             await application.bot.send_message(job.chat_id, f"❌ *Failed:* `{job.original_filename}`\n`{e}`", parse_mode=ParseMode.MARKDOWN, reply_to_message_id=job.message_id)
         finally:
             if os.path.exists(job.local_filepath):
-                os.remove(job.local_filepath)
+                try:
+                    os.remove(job.local_filepath)
+                except Exception:
+                    pass
+            
+            # Cleanup Transcript/Summary files if needed (optional, currently keeping them)
+            # if os.path.exists(ts_filepath): os.remove(ts_filepath)
             
             if 'transcript_text' in locals():
                 del transcript_text
@@ -477,13 +516,23 @@ async def main():
             idle_monitor.start()
 
         # Send startup notification in background (non-blocking)
-        startup_message = (
+        startup_text = (
             f"🚀 *Bot Online*\n\n"
-            f"📌 Model: `{Config.WHISPER_MODEL}` | Device: `{device.upper()}`\n"
-            f"📂 Max file: `{Config.BOT_FILESIZE_LIMIT}MB`\n"
-            f"🖥️ Web UI: Loading..."
+            f"🤖 *AI Model:* `{Config.WHISPER_MODEL}`\n"
+            f"Status: ⏳ Loading...\n\n"
+            f"🌐 *Web UI:* Loading...\n"
+            f"📂 Max file: `{Config.BOT_FILESIZE_LIMIT}MB`"
         )
-        asyncio.create_task(send_telegram_notification(application, startup_message))
+        keyboard = [[InlineKeyboardButton("🔌 Shutdown Bot", callback_data="shutdown_bot")]]
+        
+        msg = await application.bot.send_message(
+            chat_id=TELEGRAM_CHAT_ID, 
+            text=startup_text, 
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        global STARTUP_MESSAGE_ID
+        STARTUP_MESSAGE_ID = msg.message_id
 
     # Build Application with post_init hook
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).request(request).post_init(post_init).build()

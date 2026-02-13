@@ -47,7 +47,11 @@ async def summarize_text(transcript: str, gemini_client) -> str:
         "A. [Topik/Angle 1]\n"
         "   - Detail penting\n"
         "   - Kutipan pendukung (jika ada)\n\n"
-        "B. [Topik/Angle 2, jika ada]\n"
+        "B. [Topik/Angle 2]\n"
+        "   - Detail penting\n\n"
+        "C. [Topik/Angle 3, jika ada]\n"
+        "   - Detail penting\n\n"
+        "D. [Topik/Angle 4, jika ada]\n"
         "   - Detail penting\n\n"
         "NARASUMBER:\n"
         "1. [Nama] - [Jabatan] - \"[Kutipan kunci]\"\n"
@@ -58,7 +62,12 @@ async def summarize_text(transcript: str, gemini_client) -> str:
         "PERLU KLARIFIKASI:\n"
         "- [Hal yang tidak jelas atau perlu dicek]\n"
         "(Kosongkan jika tidak ada)\n\n"
-        "--- TRANSKRIP ---\n"
+        
+        "RETOUCH TRANSCRIPT:\n"
+        "⚠️ WARNING: Bagian ini adalah hasil perbaikan AI dan mengandung asumsi.\n\n"
+        "[Perbaiki typo dan kesalahan penulisan pada transkrip tanpa mengubah urutan kalimat atau struktur aslinya. Runtutan teks harus tetap sama seperti aslinya.]\n\n"
+        
+        "--- TRANSKRIP ASLI [JANGAN KIRIM KEMBALI] ---\n"
         f"```\n{transcript}\n```"
     )
     # Gemini models: primary and fallback

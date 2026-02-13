@@ -1,5 +1,5 @@
 #Todo
-- [ ] update config di colab terlalu ribet. buat di file config.py aja. di main.py import config.py. colab hanya load secret, run setup_uv.sh, lalu run main.py
-- [ ] optimalkan utils.py, hapus fungsi yang tidak perlu. cek main.py, pindah jika memungkinkan. harusnya log_utils.py bisa digabung ke utils.py. 
-- [ ] optimalkan requirements.txt untuk colab, harusnya sudah banyak yang built-in di colab. buat requirements_local.txt untuk lokal.
-- [ ] optimalkan wisper, sering typo padahal kata2 jelas audio bagus. cek parameter whisper.
+- buat tombol shutdown di welcome msg.
+- web ui url dan model is ready edit saja welcome msg, simpan welcome msg id global.
+- tambahkan gemini return retouch transcript (beri warining, ini berisi asumsi AI) dan ganti prefix SU_ jadi AI_
+- saat ini return hanya ada 2 topik, sepertinya ai terpake pada ekspektasi kaku, perbaiki memungkinkan bisa 3 - 4 topik.
