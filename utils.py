@@ -1,7 +1,29 @@
 import asyncio
 import sys
+import time
+import os
 from datetime import datetime
-from log_utils import log
+import config
+
+# --- Logging Utilities (Merged from log_utils.py) ---
+
+def get_runtime() -> str:
+    """Formats total runtime since INIT_START as 'Xm XXs'."""
+    elapsed = time.time() - config.INIT_START
+    minutes, seconds = divmod(int(elapsed), 60)
+    return f"{minutes}m {seconds:02d}s"
+
+def log(category: str, message: str):
+    """
+    Print log with format: [HH:MM:SS] [+Runtime] [CATEGORY] message
+    
+    Categories: INIT, JOB, IDLE, WORKER, GEMINI, WHISPER, FILE, GRADIO, ERROR
+    """
+    timestamp = time.strftime("%H:%M:%S")
+    runtime = get_runtime()
+    print(f"[{timestamp}] [+{runtime}] [{category}] {message}")
+
+# --- AI & Formatting Utilities ---
 
 async def summarize_text(transcript: str, gemini_client) -> str:
     """Generates a journalist-friendly summary of the transcript using the Gemini API in Indonesian."""
@@ -69,8 +91,6 @@ async def summarize_text(transcript: str, gemini_client) -> str:
             log("ERROR", f"Gemini {FALLBACK_MODEL} also failed: {fallback_error}")
             return f"❌ Error generating summary: {fallback_error}"
 
-
-
 def format_duration(seconds: float) -> str:
     """Converts a duration in seconds to a human-readable 'Xm XXs' format."""
     if not isinstance(seconds, (int, float)) or seconds < 0: return "N/A"
@@ -94,12 +114,6 @@ def format_timestamp(seconds: float) -> str:
 def format_transcription_with_pauses(segments: list, pause_thresh: float = 2.0) -> str:
     """
     Formats Whisper segments with timestamps at significant pauses.
-    
-    Optimized to:
-    - Handle both dictionary and object-like segments.
-    - Support HH:MM:SS timestamps for long audio.
-    - Filter empty or whitespace-only segments.
-    - Gracefully handle missing attributes.
     """
     if not segments:
         return ""
@@ -120,7 +134,7 @@ def format_transcription_with_pauses(segments: list, pause_thresh: float = 2.0) 
             continue
             
         start = float(get_val(seg, 'start', 0.0))
-        end = float(get_val(seg, 'end', start)) # Fallback end to start if missing
+        end = float(get_val(seg, 'end', start))
         
         clean_segments.append({
             'start': start, 
@@ -166,7 +180,6 @@ def format_transcription_with_pauses(segments: list, pause_thresh: float = 2.0) 
 def format_transcription_native(segments: list) -> str:
     """
     Formats Whisper segments exactly as output by the model (with VAD enabled).
-    It simply lists each segment with its timestamp, relying on VAD for segmentation.
     Format: [HH:MM:SS] Text
     """
     if not segments:
@@ -187,8 +200,8 @@ def format_transcription_native(segments: list) -> str:
             continue
             
         start = float(get_val(seg, 'start', 0.0))
-        # Format: [HH:MM:SS] Text
-        timestamp = format_timestamp(start)
-        lines.append(f"{timestamp}\n{text}")
+        # Format: Text only (User requested removal of [HH:MM:SS])
+        # timestamp = format_timestamp(start)
+        lines.append(f"{text}")
         
-    return "\n".join(lines)
+    return "\n\n".join(lines)

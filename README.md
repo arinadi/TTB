@@ -14,12 +14,12 @@ Specifically designed to run on **Google Colab** (Free GPU) using the "Vibe Codi
 
 ## ✨ Key Features
 
--   **Accurate Transcription**: Uses **faster-whisper** (`large-v3`) with standard segmentation (VAD disabled by default to capture all audio).
+-   **Accurate Transcription**: Uses **faster-whisper** (`large-v2` default for SEA languages) with optimized beam search.
 -   **Smart Summarization**: Integrates Google Gemini 2.5 Flash to summarize transcripts into key points (Indonesian).
 -   **Large File Support**: Handles audio/video files up to Telegram's limit, and supports **Multi-part ZIP archives** (e.g., `file.zip.001`) for very large files.
 -   **GPU Acceleration**: Optimized for fast performance on GPU (CUDA), with FP16/INT8 dynamic loading.
--   **Native Formatting**: Text output uses **native Whisper segments** with precise timestamps (`[HH:MM:SS]` or `[MM:SS]`).
--   **Task Management**: Queue system to handle multiple requests sequentially.
+-   **Clean Formatting**: Text output is formatted as **clean paragraphs** separated by double newlines, with timestamps removed for better readability.
+-   **Context-Aware**: Uses VAD (Voice Activity Detection) and Repetition Penalties to reduce hallucinations.
 
 ## 🚀 How to Run (Google Colab)
 
@@ -67,10 +67,9 @@ The easiest and recommended way is to use Google Colab.
         os.environ['IDLE_FINAL_WARNING_MINUTES'] = "5"  # Default: 2
         os.environ['IDLE_FIRST_ALERT_MINUTES'] = "1"   # Default: 1
         
-        # Advanced: Whisper Tweaks
-        # os.environ['PAUSE_THRESHOLD'] = "0.7" 
-        # os.environ['MODEL_SIZE'] = "large-v3"
-        # os.environ['USE_FP16'] = "auto"
+        # Advanced: Whisper Customization
+        # os.environ['WHISPER_MODEL'] = "large-v3"    # Override 'large-v2'
+        # os.environ['WHISPER_PATIENCE'] = "2.0"      # "Time to think" factor
         
         print("✅ Loaded Keys and Timer")
         
@@ -132,12 +131,12 @@ If you have your own GPU (NVIDIA) or want to run on CPU (slower):
 
 2.  **Install Dependencies**:
     ```bash
-    pip install -r requirements.txt
+    pip install -r requirements_local.txt
     ```
     *Note: Ensure `ffmpeg` is installed on your system.*
 
 3.  **Setup Environment Variables**:
-    Set the following variables in your terminal or a `.env` file:
+    Set the following in `.env` or system variables:
     -   `TELEGRAM_BOT_TOKEN`
     -   `TELEGRAM_CHAT_ID`
     -   `GEMINI_API_KEY`
@@ -150,33 +149,28 @@ If you have your own GPU (NVIDIA) or want to run on CPU (slower):
 ## 📂 File Structure
 
 -   `main.py`: Main entry point. Contains Telegram bot logic, queue system, and model initialization.
--   `utils.py`: Helper functions for text formatting, duration, and Gemini API wrapper.
--   `gradio_handler.py`: Optional Gradio web interface for transcription.
--   `setup_uv.sh`: Fast dependency installer using uv (~30s vs 2+ min with pip).
--   `requirements.txt`: List of required Python libraries.
--   `TTBv1.py`: (Legacy) Old monolithic version, kept as reference.
+-   `config.py`: Centralized configuration and secrets management.
+-   `utils.py`: Helper functions for text formatting, logging, and Gemini API wrapper.
+-   `gradio_handler.py`: Optional Gradio web interface for large file uploads.
+-   `requirements.txt`: Optimized list for Colab.
+-   `requirements_local.txt`: Full list for local dev.
 
 ## 🛠 Advanced Configuration
 
-You can change default settings inside `main.py` (`Config` class):
--   `MODEL_SIZE`: `large-v3`, `medium`, `small`, etc.
--   `PAUSE_THRESHOLD`: Silence threshold for custom processing (default: 0.3).
--   `USE_FP16`: Precision config (`auto`, `True`, `False`).
--   `MAX_AUDIO_DURATION_MINUTES`: Audio duration limit (default: 90 minutes).
--   `ENABLE_IDLE_MONITOR`: Automatically turn off Colab runtime if idle (saves resources).
+All settings are managed in `config.py` and can be overridden via Environment Variables:
+
+-   **Model**: `WHISPER_MODEL` (default: `large-v2`).
+-   **Precision**: `WHISPER_PRECISION` (`auto`, `float16`, `int8`).
+-   **VAD**: `VAD_FILTER` (True/False) to reduce hallucinations.
+-   **Decoding**: 
+    - `WHISPER_PATIENCE` (Default: 2.0)
+    - `REPETITION_PENALTY` (Default: 1.1)
+-   **Idle Monitor**: `ENABLE_IDLE_MONITOR` (Colab saver).
 
 ## 🔄 Network Resilience
 
 This bot has robust error handling for connection issues in Colab:
 
 -   **Auto-Retry**: Transient network errors are auto-retried (max 2x) without shutdown.
--   **Extended Timeouts**: `read_timeout=60s`, `write_timeout=30s`, `pool_timeout=30s`.
--   **Connection Pool**: Pool size 8 for more stable connections.
-
-**Handled Errors (no shutdown triggered):**
-| Category | Error Types |
-| :--- | :--- |
-| **httpx** | `ReadError`, `WriteError`, `ConnectError`, `ConnectTimeout`, `ReadTimeout`, `WriteTimeout`, `PoolTimeout`, `CloseError`, `ProxyError`, `ProtocolError` |
-| **SSL** | `SSLError`, `SSLCertVerificationError` |
-| **Telegram** | `TimeoutException`, `NetworkError`, `TimedOut`, `RetryAfter` |
-| **General** | `ConnectionError`, `ConnectionResetError`, `ConnectionRefusedError`, `BrokenPipeError`, `OSError` |
+-   **Extended Timeouts**: Optimized specifically for Colab's network environment.
+-   **Connection Pool**: Pool size 8 for stable connections.

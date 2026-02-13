@@ -3,6 +3,11 @@
 # SECTION 1: CONFIGURATION AND SECRETS
 # ------------------------------------------------------------------------------
 
+# 🚀 Run Transcription Bot (Telegram Version - Modular)
+# ------------------------------------------------------------------------------
+# SECTION 1: IMPORT & CONFIGURATION
+# ------------------------------------------------------------------------------
+
 import sys
 import os
 import asyncio
@@ -15,15 +20,20 @@ import zipfile
 from dataclasses import dataclass, field
 from typing import List, Optional
 
-# --- Global Initialization Timing ---
-# This tries to get the start time from Colab's README environment variable.
-# If running locally (variable missing), it falls back to current time.
-INIT_START = float(os.getenv('INIT_START', time.time()))
+# --- Local Imports ---
+import config
+from config import Config
+from utils import (
+    summarize_text, 
+    format_duration, 
+    format_transcription_with_pauses, 
+    format_transcription_native,
+    log, 
+    get_runtime
+)
 
-# External Layouts
-# Note: These must be installed via requirements.txt
+# --- External Libraries ---
 try:
-    import utils
     from faster_whisper import WhisperModel
     import torch
     import ffmpeg
@@ -33,17 +43,12 @@ try:
     from telegram.constants import ParseMode
     from telegram.ext import (Application, CallbackQueryHandler, CommandHandler,
                               ContextTypes, MessageHandler, filters)
-    from telegram.request import HTTPXRequest
     from werkzeug.utils import secure_filename
     import nest_asyncio
 except ImportError as e:
     sys.exit(f"❌ Critical Dependency Missing: {e}\nPlease run: pip install -r requirements.txt")
 
-# Local Imports
-from utils import summarize_text, format_duration, format_transcription_with_pauses
-from log_utils import log
-
-# Optional: Gradio for large file uploads
+# Optional: Gradio
 try:
     import gradio_handler
     GRADIO_AVAILABLE = True
@@ -51,53 +56,29 @@ except ImportError:
     GRADIO_AVAILABLE = False
     log("INIT", "Gradio not available. Web interface disabled.")
 
+# --- Secrets Alias ---
+TELEGRAM_BOT_TOKEN = config.TELEGRAM_BOT_TOKEN
+TELEGRAM_CHAT_ID = config.TELEGRAM_CHAT_ID
+GEMINI_API_KEY = config.GEMINI_API_KEY
 
-# --- 1.1. Load Core Secrets (from environment - set by Colab runner) ---
-TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
-TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID')
-GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
-
-# Detect Colab runtime for shutdown functionality
+# Detect Colab
 try:
     from google.colab import runtime
     IS_COLAB = True
 except ImportError:
     IS_COLAB = False
-    # Mock runtime for local testing
     class MockRuntime:
         def unassign(self): print("🔌 Local Runtime Shutdown Executed")
     runtime = MockRuntime()
 
+# Validation
 if not all([TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID]):
-    # Note: For local testing, ensure these env vars are set. 
-    # For Colab, ensure they are in the Secrets tab.
     print("❌ ERROR: Core secrets (TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID) are missing.")
-    # We don't exit here to allow import checks, but main() will fail.
-
-if TELEGRAM_CHAT_ID:
-    TELEGRAM_CHAT_ID = int(TELEGRAM_CHAT_ID)
 
 if not GEMINI_API_KEY:
     print("⚠️ WARNING: GEMINI_API_KEY not set. Summarization features will be disabled.")
 
-# --- 1.2. Bot & Model Configuration ---
-# Hardcoded defaults for the script version. 
-# In Colab, these were widgets. Now they are constants.
-class Config:
-    MODEL_SIZE = os.getenv('MODEL_SIZE', 'large-v3')
-    USE_FP16 = os.getenv('USE_FP16', 'auto') # 'auto', 'True', 'False'
-    BEAM_SIZE = int(os.getenv('BEAM_SIZE', 10))
-    PAUSE_THRESHOLD = float(os.getenv('PAUSE_THRESHOLD', 0.3))
-    MAX_AUDIO_DURATION_MINUTES = int(os.getenv('MAX_AUDIO_DURATION_MINUTES', 90))
-    
-    ENABLE_IDLE_MONITOR = os.getenv('ENABLE_IDLE_MONITOR', 'True').lower() == 'true'
-    IDLE_FIRST_ALERT_MINUTES = int(os.getenv('IDLE_FIRST_ALERT_MINUTES', 1))
-    IDLE_FINAL_WARNING_MINUTES = int(os.getenv('IDLE_FINAL_WARNING_MINUTES', 2))
-    IDLE_SHUTDOWN_MINUTES = int(os.getenv('IDLE_SHUTDOWN_MINUTES', 3))
-    
-    BOT_FILESIZE_LIMIT = int(os.getenv('BOT_FILESIZE_LIMIT', 20))
-
-# --- 1.3. Derived Constants ---
+# Constants
 TRANSCRIPT_FILENAME_PREFIX = "TS"
 SUMMARY_FILENAME_PREFIX = "SU"
 
@@ -129,9 +110,7 @@ models_ready_event = asyncio.Event()
 # SECTION 4: DATA CLASSES & MANAGERS
 # ------------------------------------------------------------------------------
 
-def get_runtime() -> str:
-    """Calculates and formats the total runtime since INIT_START."""
-    return format_duration(time.time() - INIT_START)
+
 
 @dataclass
 class TranscriptionJob:
@@ -333,12 +312,7 @@ class FilesHandler:
             probe = await asyncio.to_thread(ffmpeg.probe, local_path)
             duration = float(probe['format']['duration'])
 
-            max_seconds = Config.MAX_AUDIO_DURATION_MINUTES * 60
-            if Config.MAX_AUDIO_DURATION_MINUTES > 0 and duration > max_seconds:
-                error_msg = f"File duration ({format_duration(duration)}) exceeds the maximum limit ({format_duration(max_seconds)})."
-                await message.reply_text(f"❌ Could not process `{original_filename}`. *Reason:* {error_msg}", parse_mode=ParseMode.MARKDOWN)
-                if os.path.exists(local_path): os.remove(local_path)
-                return
+            # Duration check removed by user request
 
             job_message = message
             if filename_override:
@@ -530,16 +504,22 @@ async def initialize_models_background():
     """Loads Whisper and initializes Gemini client in a background task."""
     global model, gemini_client
     try:
-        log("INIT", f"Loading Whisper ({Config.MODEL_SIZE}, {device})...")
-        # Logic for compute_type based on Config and Device
+        log("INIT", f"Loading Whisper ({Config.WHISPER_MODEL}, {device})...")
+        # Logic for compute_type
         compute_type = "float16" if device == "cuda" else "int8"
-        if Config.USE_FP16 != 'auto':
-             if str(Config.USE_FP16).lower() == 'false':
-                 compute_type = "float32"
+        
+        # User override logic (backward compatibility with 'True'/'False' strings)
+        prec_cfg = str(Config.WHISPER_PRECISION).lower()
+        if prec_cfg == 'false' or prec_cfg == 'float32':
+            compute_type = "float32"
+        elif prec_cfg == 'float16':
+            compute_type = "float16"
+        elif prec_cfg == 'int8':
+            compute_type = "int8"
 
         model = await asyncio.to_thread(
             WhisperModel, 
-            Config.MODEL_SIZE, 
+            Config.WHISPER_MODEL, 
             device=device, 
             compute_type=compute_type
         )
@@ -552,7 +532,8 @@ async def initialize_models_background():
 
         models_ready_event.set()
         gemini_status = "✓" if gemini_client else "✗"
-        await send_telegram_notification(application, f"✅ *Ready!* `{Config.MODEL_SIZE}` loaded in `{get_runtime()}`\nGemini: {gemini_status}")
+
+        await send_telegram_notification(application, f"✅ *Ready!* `{Config.WHISPER_MODEL}` loaded in `{get_runtime()}`\nGemini: {gemini_status}")
     except Exception as e:
         log("ERROR", f"Model loading failed: {e}")
         await send_telegram_notification(application, f"❌ *FATAL:* Model loading failed: {e}")
@@ -618,16 +599,27 @@ def run_transcription_process(job: TranscriptionJob) -> tuple[str, str]:
     from log_utils import log
     log("WHISPER", f"[{job.job_id}] Transcribing {job.original_filename}...")
     
-    transcribe_options = {"beam_size": Config.BEAM_SIZE}
+    transcribe_options = {
+        "beam_size": Config.WHISPER_BEAM_SIZE,
+        "patience": Config.WHISPER_PATIENCE,
+        "temperature": Config.WHISPER_TEMPERATURE,
+        "repetition_penalty": Config.WHISPER_REPETITION_PENALTY,
+        "no_repeat_ngram_size": Config.WHISPER_NO_REPEAT_NGRAM_SIZE
+    }
     
     # Run transcription
-    # faster-whisper returns a generator, so we must iterate to process
-    # VAD filter disabled by user request, but we keep native segment formatting
-    # vad_parameters = dict(min_silence_duration_ms=500)
+    # VAD parameters from user research
+    vad_parameters = dict(
+        threshold=Config.VAD_THRESHOLD,
+        min_speech_duration_ms=Config.VAD_MIN_SPEECH_DURATION_MS,
+        min_silence_duration_ms=Config.VAD_MIN_SILENCE_DURATION_MS,
+        speech_pad_ms=Config.VAD_SPEECH_PAD_MS
+    )
+    
     segments_generator, info = model.transcribe(
         job.local_filepath, 
-        vad_filter=False,
-        # vad_parameters=vad_parameters,
+        vad_filter=Config.VAD_FILTER,
+        vad_parameters=vad_parameters,
         **transcribe_options
     )
     

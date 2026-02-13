@@ -14,7 +14,7 @@ try:
 except ImportError:
     gr = None
 
-from log_utils import log
+from utils import log
 
 if TYPE_CHECKING:
     from main import JobManager, TranscriptionJob
