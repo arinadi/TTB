@@ -43,7 +43,7 @@ class Config:
 
     # --- VAD (Voice Activity Detection) ---
     # Filter: Enable/Disable VAD to remove silence/hallucinations.
-    VAD_FILTER = os.getenv('VAD_FILTER', 'True').lower() == 'true'
+    VAD_FILTER = os.getenv('VAD_FILTER', 'False').lower() == 'true'
     
     # Threshold: Probability threshold for speech (0.1-1.0). Higher = strictly speech.
     VAD_THRESHOLD = float(os.getenv('VAD_THRESHOLD', 0.5))
