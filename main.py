@@ -99,7 +99,7 @@ os.makedirs(TRANSCRIPT_FOLDER, exist_ok=True)
 # ------------------------------------------------------------------------------
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
-fp16_enabled = str(Config.USE_FP16).lower() == 'true' or (str(Config.USE_FP16).lower() == 'auto' and device == 'cuda')
+fp16_enabled = str(Config.WHISPER_PRECISION).lower() == 'true' or (str(Config.WHISPER_PRECISION).lower() == 'auto' and device == 'cuda')
 
 # Global State
 model = None
@@ -831,7 +831,7 @@ async def main():
         # Send startup notification in background (non-blocking)
         startup_message = (
             f"🚀 *Bot Online*\n\n"
-            f"📌 Model: `{Config.MODEL_SIZE}` | Device: `{device.upper()}`\n"
+            f"📌 Model: `{Config.WHISPER_MODEL}` | Device: `{device.upper()}`\n"
             f"📂 Max file: `{Config.BOT_FILESIZE_LIMIT}MB`\n"
             f"🖥️ Web UI: Loading..."
         )
