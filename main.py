@@ -41,8 +41,9 @@ try:
     import telegram
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
     from telegram.constants import ParseMode
+    from telegram.request import HTTPXRequest
     from telegram.ext import (Application, CallbackQueryHandler, CommandHandler,
-                              ContextTypes, MessageHandler, filters, HTTPXRequest)
+                              ContextTypes, MessageHandler, filters)
     from werkzeug.utils import secure_filename
     import nest_asyncio
 except ImportError as e:
