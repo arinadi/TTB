@@ -42,7 +42,7 @@ try:
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
     from telegram.constants import ParseMode
     from telegram.ext import (Application, CallbackQueryHandler, CommandHandler,
-                              ContextTypes, MessageHandler, filters)
+                              ContextTypes, MessageHandler, filters, HTTPXRequest)
     from werkzeug.utils import secure_filename
     import nest_asyncio
 except ImportError as e:
