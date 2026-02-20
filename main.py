@@ -58,6 +58,11 @@ if MODE == 'WHISPER':
     except ImportError:
         log("INIT", "Gradio not available.")
 
+# --- Secrets Alias ---
+TELEGRAM_BOT_TOKEN = config.TELEGRAM_BOT_TOKEN
+TELEGRAM_CHAT_ID = config.TELEGRAM_CHAT_ID
+GEMINI_API_KEY = config.GEMINI_API_KEY
+
 # Detect Colab
 try:
     from google.colab import runtime

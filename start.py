@@ -33,6 +33,20 @@ def main():
         print(f"🚀 {reason}. Transcription Mode: WHISPER")
     else:
         print(f"⚠️ {gpu_reason}. Transcription Mode: GEMINI (CPU)")
+        # Check if basic dependencies like google-genai are present
+        try:
+            import google.genai
+            import telegram
+        except ImportError:
+            print("❌ Basic dependencies missing. Running setup_uv.sh...")
+            try:
+                subprocess.run(["bash", "setup_uv.sh"], check=True)
+                print("✅ Dependencies installed. Please restart the runner.")
+                sys.exit(0)
+            except Exception as e:
+                print(f"❌ Failed to run setup_uv.sh: {e}")
+                print("Please run 'bash setup_uv.sh' manually.")
+                sys.exit(1)
 
     # Set Environment Variable
     os.environ['TRANSCRIPTION_MODE'] = mode
