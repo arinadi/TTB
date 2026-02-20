@@ -263,7 +263,7 @@ async def update_startup_message(gradio_url: str = None):
         if hasattr(gradio_handler.gradio_app, 'share_url'):
             gradio_url = gradio_handler.gradio_app.share_url
 
-    gradio_text = f"\n{gradio_text}\n" if GRADIO_AVAILABLE else ""
+    gradio_text = f"\n🌐 *Web UI:* {gradio_url}\n" if gradio_url else ""
     
     msg_text = (
         f"🚀 *Bot Online* ({mode_icon} `{MODE}`)\n\n"
