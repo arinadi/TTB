@@ -108,16 +108,19 @@ The easiest and recommended way is to use Google Colab.
 
     # 4. Run the Bot
     print("🚀 Starting TTB...")
-    !python main.py
+    !python start.py
     ```
 
-## 🧠 Vibe Coding Tips
+## 🧠 Smart Mode Selection
 
--   **Structure**: Logic is in `.py` files (`main.py`, `utils.py`) for easier Git handling and AI agent interaction. Colab is just the *runner*.
+TTB automatically detects your environment and selects the best transcription method:
+
+-   **🔥 WHISPER Mode (GPU)**: Activated if a T4/NVIDIA GPU is detected. Highly accurate, runs locally.
+-   **🌩️ GEMINI Mode (CPU)**: Default fallback for CPU-only environments (Local/Laptop/Termux). Uses Google Gemini API for transcription. 
+    -   *Limit: Max 10 mins per audio file in this mode.*
+    -   *Idle timers are extended (5x) to prevent frequent shutdowns on slow systems.*
 
 ## 💻 How to Run (Local)
-
-If you have your own GPU (NVIDIA) or want to run on CPU (slower):
 
 1.  **Clone Repo**:
     ```bash
@@ -126,20 +129,16 @@ If you have your own GPU (NVIDIA) or want to run on CPU (slower):
     ```
 
 2.  **Install Dependencies**:
-    ```bash
-    pip install -r requirements_local.txt
-    ```
-    *Note: Ensure `ffmpeg` is installed on your system.*
+    - For **GPU**: `pip install -r requirements.txt`
+    - For **CPU**: `pip install -r requirements_cpu.txt`
+    - Or run `bash setup_uv.sh` to auto-detect and install.
 
 3.  **Setup Environment Variables**:
-    Set the following in `.env` or system variables:
-    -   `TELEGRAM_BOT_TOKEN`
-    -   `TELEGRAM_CHAT_ID`
-    -   `GEMINI_API_KEY`
+    Set `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, and `GEMINI_API_KEY`.
 
 4.  **Run Bot**:
     ```bash
-    python main.py
+    python start.py
     ```
 
 ## 📂 File Structure

@@ -26,10 +26,16 @@ from utils import (
 )
 from bot_classes import TranscriptionJob, IdleMonitor, JobManager, FilesHandler
 
+# --- Transcription Mode ---
+MODE = os.getenv('TRANSCRIPTION_MODE', 'GEMINI')
+
 # --- External Libraries ---
 try:
-    from faster_whisper import WhisperModel
-    import torch
+    if MODE == 'WHISPER':
+        from faster_whisper import WhisperModel
+        import torch
+    else:
+        log("INIT", "CPU/GEMINI Mode active. Skipping Whisper/Torch.")
 
     from google import genai
     import telegram
@@ -41,20 +47,16 @@ try:
     from werkzeug.utils import secure_filename
     import nest_asyncio
 except ImportError as e:
-    sys.exit(f"❌ Critical Dependency Missing: {e}\nPlease run: pip install -r requirements.txt")
+    sys.exit(f"❌ Critical Dependency Missing: {e}\nPlease run: pip install -r requirements_cpu.txt")
 
-# Optional: Gradio
-try:
-    import gradio_handler
-    GRADIO_AVAILABLE = True
-except ImportError:
-    GRADIO_AVAILABLE = False
-    log("INIT", "Gradio not available. Web interface disabled.")
-
-# --- Secrets Alias ---
-TELEGRAM_BOT_TOKEN = config.TELEGRAM_BOT_TOKEN
-TELEGRAM_CHAT_ID = config.TELEGRAM_CHAT_ID
-GEMINI_API_KEY = config.GEMINI_API_KEY
+# Optional: Gradio (Whisper Mode only)
+GRADIO_AVAILABLE = False
+if MODE == 'WHISPER':
+    try:
+        import gradio_handler
+        GRADIO_AVAILABLE = True
+    except ImportError:
+        log("INIT", "Gradio not available.")
 
 # Detect Colab
 try:
@@ -93,13 +95,16 @@ os.makedirs(TRANSCRIPT_FOLDER, exist_ok=True)
 # SECTION 3: AI AND HARDWARE INITIALIZATION
 # ------------------------------------------------------------------------------
 
-device = "cuda" if torch.cuda.is_available() else "cpu"
-fp16_enabled = str(Config.WHISPER_PRECISION).lower() == 'true' or (str(Config.WHISPER_PRECISION).lower() == 'auto' and device == 'cuda')
+device = "cuda" if MODE == 'WHISPER' and torch.cuda.is_available() else "cpu"
+fp16_enabled = MODE == 'WHISPER' and (str(Config.WHISPER_PRECISION).lower() == 'true' or (str(Config.WHISPER_PRECISION).lower() == 'auto' and device == 'cuda'))
 
 # Global State
 model = None
 gemini_client = None
 models_ready_event = asyncio.Event()
+
+if MODE == 'GEMINI':
+    models_ready_event.set() # Gemini doesn't need "loading" wait here
 
 
 
@@ -147,29 +152,30 @@ async def perform_shutdown(reason: str):
             log("ERROR", f"Runtime shutdown failed: {e}")
 
 async def initialize_models_background():
-    """Loads Whisper and initializes Gemini client in a background task."""
+    """Loads Whisper (if in WHISPER mode) and initializes Gemini client."""
     global model, gemini_client
     try:
-        log("INIT", f"Loading Whisper ({Config.WHISPER_MODEL}, {device})...")
-        # Logic for compute_type
-        compute_type = "float16" if device == "cuda" else "int8"
-        
-        # User override logic (backward compatibility with 'True'/'False' strings)
-        prec_cfg = str(Config.WHISPER_PRECISION).lower()
-        if prec_cfg == 'false' or prec_cfg == 'float32':
-            compute_type = "float32"
-        elif prec_cfg == 'float16':
-            compute_type = "float16"
-        elif prec_cfg == 'int8':
-            compute_type = "int8"
+        if MODE == 'WHISPER':
+            log("INIT", f"Loading Whisper ({Config.WHISPER_MODEL}, {device})...")
+            # Logic for compute_type
+            compute_type = "float16" if device == "cuda" else "int8"
+            
+            # User override logic
+            prec_cfg = str(Config.WHISPER_PRECISION).lower()
+            if prec_cfg == 'false' or prec_cfg == 'float32':
+                compute_type = "float32"
+            elif prec_cfg == 'float16':
+                compute_type = "float16"
+            elif prec_cfg == 'int8':
+                compute_type = "int8"
 
-        model = await asyncio.to_thread(
-            WhisperModel, 
-            Config.WHISPER_MODEL, 
-            device=device, 
-            compute_type=compute_type
-        )
-        log("INIT", f"Whisper loaded ({compute_type})")
+            model = await asyncio.to_thread(
+                WhisperModel, 
+                Config.WHISPER_MODEL, 
+                device=device, 
+                compute_type=compute_type
+            )
+            log("INIT", f"Whisper loaded ({compute_type})")
         
         if GEMINI_API_KEY:
             log("INIT", "Initializing Gemini...")
@@ -182,8 +188,8 @@ async def initialize_models_background():
         await update_startup_message()
 
     except Exception as e:
-        log("ERROR", f"Model loading failed: {e}")
-        await send_telegram_notification(application, f"❌ *FATAL:* Model loading failed: {e}")
+        log("ERROR", f"Initialization failed: {e}")
+        await send_telegram_notification(application, f"❌ *FATAL:* Initialization failed: {e}")
         await perform_shutdown("AI Model Loading Failed")
 
 async def initialize_gradio_background():
@@ -226,19 +232,20 @@ async def update_startup_message(gradio_url: str = None):
 
     ai_status = "✅ Ready" if models_ready_event.is_set() else "⏳ Loading..."
     gemini_icon = "✓" if gemini_client else "✗"
+    mode_icon = "🌩️" if MODE == 'GEMINI' else "🔥"
     
     # If gradio_url is not passed, try to fetch it if it exists
     if not gradio_url and GRADIO_AVAILABLE and gradio_handler.gradio_app:
         if hasattr(gradio_handler.gradio_app, 'share_url'):
             gradio_url = gradio_handler.gradio_app.share_url
 
-    gradio_text = f"🌐 *Web UI:* {gradio_url}" if gradio_url else "🌐 *Web UI:* Loading..."
+    gradio_text = f"\n{gradio_text}\n" if GRADIO_AVAILABLE else ""
     
     msg_text = (
-        f"🚀 *Bot Online*\n\n"
-        f"🤖 *AI Model:* `{Config.WHISPER_MODEL}`\n"
-        f"Status: {ai_status} (Gemini: {gemini_icon})\n\n"
-        f"{gradio_text}\n"
+        f"🚀 *Bot Online* ({mode_icon} `{MODE}`)\n\n"
+        f"🤖 *AI Model:* `{'Gemini' if MODE == 'GEMINI' else Config.WHISPER_MODEL}`\n"
+        f"Status: {ai_status} (Gemini AI: {gemini_icon})\n"
+        f"{gradio_text}"
         f"📂 Max file: `{Config.BOT_FILESIZE_LIMIT}MB`"
     )
     
@@ -322,7 +329,12 @@ async def queue_processor():
             await application.bot.send_message(job.chat_id, f"▶️ Processing `{job.original_filename}` ({duration_str})...", parse_mode=ParseMode.MARKDOWN)
             start_time = time.time()
 
-            transcript_text, detected_language = await asyncio.to_thread(run_transcription_process, job)
+            if MODE == 'GEMINI':
+                from utils import transcribe_with_gemini
+                transcript_text, detected_language = await transcribe_with_gemini(job.local_filepath, job.audio_duration, gemini_client)
+            else:
+                transcript_text, detected_language = await asyncio.to_thread(run_transcription_process, job)
+            
             if job.status == 'cancelled': raise asyncio.CancelledError("Job cancelled during transcription.")
 
             base_name = os.path.splitext(job.original_filename)[0]
@@ -405,8 +417,9 @@ async def get_status_text_and_keyboard():
         processing_line = ""
 
     ai_status = "✅" if models_ready_event.is_set() else "⏳"
+    mode_label = "Gemini" if MODE == 'GEMINI' else "Whisper"
     text = (
-        f"📊 *Status*\n"
+        f"📊 *Status* ({mode_label})\n"
         f"{processing_line}"
         f"⏳ Uptime: `{get_runtime()}` | Queue: `{job_manager.job_queue.qsize()}`\n"
         f"🤖 AI: {ai_status}"
@@ -513,14 +526,20 @@ async def main():
             application.create_task(initialize_gradio_background())
         
         if Config.ENABLE_IDLE_MONITOR:
+            # CPU/Gemini Mode: Multiply by 5 as requested
+            if MODE == 'GEMINI':
+                Config.IDLE_FIRST_ALERT_MINUTES *= 5
+                Config.IDLE_FINAL_WARNING_MINUTES *= 5
+                Config.IDLE_SHUTDOWN_MINUTES *= 5
+                log("INIT", f"CPU Mode: Idle timers set to {Config.IDLE_FIRST_ALERT_MINUTES}/{Config.IDLE_FINAL_WARNING_MINUTES}/{Config.IDLE_SHUTDOWN_MINUTES}m")
             idle_monitor.start()
 
         # Send startup notification in background (non-blocking)
+        mode_icon = "🌩️" if MODE == 'GEMINI' else "🔥"
         startup_text = (
-            f"🚀 *Bot Online*\n\n"
-            f"🤖 *AI Model:* `{Config.WHISPER_MODEL}`\n"
+            f"🚀 *Bot Online* ({mode_icon} `{MODE}`)\n\n"
+            f"🤖 *AI Model:* `{'Gemini' if MODE == 'GEMINI' else Config.WHISPER_MODEL}`\n"
             f"Status: ⏳ Loading...\n\n"
-            f"🌐 *Web UI:* Loading...\n"
             f"📂 Max file: `{Config.BOT_FILESIZE_LIMIT}MB`"
         )
         keyboard = [[InlineKeyboardButton("🔌 Shutdown Bot", callback_data="shutdown_bot")]]

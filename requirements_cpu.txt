@@ -1,0 +1,5 @@
+ffmpeg-python
+python-telegram-bot
+google-genai
+nest_asyncio
+werkzeug

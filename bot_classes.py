@@ -260,7 +260,19 @@ class FilesHandler:
             probe = await asyncio.to_thread(ffmpeg.probe, local_path)
             duration = float(probe['format']['duration'])
 
-            # Duration check removed by user request
+            # Duration check for Gemini mode
+            mode = os.getenv('TRANSCRIPTION_MODE', 'GEMINI')
+            if mode == 'GEMINI' and duration > 600:
+                await message.reply_text(
+                    f"⚠️ *Split Duration Limit Exceeded*\n\n"
+                    f"File `{original_filename}` is {duration/60:.1f} minutes long. "
+                    f"In CPU/Gemini mode, the limit is 10 minutes per file. "
+                    f"Please trim or split the file.",
+                    parse_mode=ParseMode.MARKDOWN
+                )
+                if os.path.exists(local_path):
+                    os.remove(local_path)
+                return
 
             job_message = message
             if filename_override:

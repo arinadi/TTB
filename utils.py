@@ -62,17 +62,11 @@ async def summarize_text(transcript: str, gemini_client) -> str:
         "PERLU KLARIFIKASI:\n"
         "- [Hal yang tidak jelas atau perlu dicek]\n"
         "(Kosongkan jika tidak ada)\n\n"
-        "-----\n\n"
-        "RETOUCH TRANSCRIPT:\n"
-        "! WARNING: Bagian ini adalah hasil perbaikan AI dan mengandung asumsi.\n\n"
-        "[Perbaiki typo, kesalahan penulisan, serta tanda baca (seperti tanda tanya) pada transkrip. "
-        "Berikan jeda baris (enter) di setiap akhir paragraf agar teks lebih mudah dibaca. "
-        "Pastikan urutan kalimat dan struktur asli teks tetap sama.]\n\n"
-        "--- TRANSKRIP ASLI [JANGAN KIRIM KEMBALI] ---\n"
-        f"```\n{transcript}\n```"
+        "-----\n"
     )
-    # Gemini models: primary and fallback
-    PRIMARY_MODEL = "gemini-3-flash-preview"
+    
+    # Gemini models
+    PRIMARY_MODEL = "gemini-3-flash-preview"     # Use newer flash as primary
     FALLBACK_MODEL = "gemini-2.5-flash"
     
     try:
@@ -202,3 +196,56 @@ def format_transcription_native(segments: list) -> str:
         lines.append(f"{text}")
         
     return "\n\n".join(lines)
+
+async def transcribe_with_gemini(local_filepath: str, duration: float, gemini_client) -> tuple[str, str]:
+    """Transcribes audio using Gemini API (File API)."""
+    if not gemini_client:
+        return "Error: Gemini client not initialized.", "N/A"
+
+    try:
+        log("GEMINI", f"Uploading {os.path.basename(local_filepath)}...")
+        # 1. Upload
+        audio_file = await asyncio.to_thread(
+            gemini_client.files.upload, 
+            file=local_filepath
+        )
+        
+        # 2. Wait for ACTIVE
+        log("GEMINI", "Waiting for file processing...")
+        while True:
+            audio_file = await asyncio.to_thread(
+                gemini_client.files.get, 
+                name=audio_file.name
+            )
+            if audio_file.state.name == "ACTIVE":
+                break
+            elif audio_file.state.name != "PROCESSING":
+                raise Exception(f"File failed to process. State: {audio_file.state.name}")
+            await asyncio.sleep(2)
+
+        # 3. Generate Transcript
+        prompt = (
+            "Transcribe this audio file accurately. Identify different speakers if possible. "
+            "Output only the transcript.\n"
+            "STRICT FORMATTING RULE:\n"
+            "- DO NOT include timestamps.\n"
+            "- Insert a double newline (\\n\\n) after every sentence/period.\n"
+            "- Do not change any words, order, or content.\n"
+            "- Simply ensure there is a blank line between every sentence for readability."
+        )
+
+        log("GEMINI", f"Generating transcript for {duration:.1f}s audio...")
+        response = await asyncio.to_thread(
+            gemini_client.models.generate_content,
+            model="gemini-2.5-flash", # Use specific model for transcript
+            contents=[audio_file, prompt]
+        )
+
+        if not response.text:
+            return "Warning: Empty transcript returned by Gemini.", "N/A"
+
+        return response.text, "ID" # Assume ID as default or let gemini detect (but return ID for lang label)
+
+    except Exception as e:
+        log("ERROR", f"Gemini transcription failed: {e}")
+        return f"Error transcribing with Gemini: {e}", "N/A"

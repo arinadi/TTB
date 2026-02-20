@@ -8,8 +8,17 @@
 echo "⏳ Installing uv package manager..."
 pip install uv -q
 
-echo "⏳ Installing dependencies with uv..."
-cat requirements.txt
-uv pip install -r requirements.txt --system
+echo "⏳ Checking hardware..."
+if command -v nvidia-smi &> /dev/null; then
+    echo "🚀 GPU detected. Installing full requirements..."
+    REQUIREMENTS_FILE="requirements.txt"
+else
+    echo "⚠️ No GPU detected. Installing minimal CPU requirements..."
+    REQUIREMENTS_FILE="requirements_cpu.txt"
+fi
+
+echo "⏳ Installing dependencies from $REQUIREMENTS_FILE with uv..."
+cat $REQUIREMENTS_FILE
+uv pip install -r $REQUIREMENTS_FILE --system
 
 echo "✅ Installation complete!"
