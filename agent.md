@@ -3,39 +3,40 @@
 > **Role**: Act as an Equal Pair Programmer. Maintain consistent coding standards and structures.
 
 ## Project Overview
-TTB is a Telegram bot designed for **Google Colab** that performs:
-1.  **Transcription**: Using `faster-whisper` (GPU-accelerated).
+TTB is a Telegram bot designed for **Google Colab** and local systems that performs:
+1.  **Transcription**: Using `faster-whisper` (GPU) or **Google Gemini API** (CPU fallback).
 2.  **Summarization**: Using **Google Gemini** (Indonesian context).
-3.  **Large File Handling**: Via Gradio Web UI bypass for files >20MB.
+3.  **Large File Handling**: Via Gradio Web UI (Whisper Mode only).
 
 ## Architecture
+-   **Smart Runner**: `start.py` detects CPU/GPU and sets `TRANSCRIPTION_MODE` ('WHISPER' or 'GEMINI').
 -   **Vibe Coding**: This repository is the *Source of Truth*. Colab pulls this code at runtime.
 -   **Async First**: Built on `python-telegram-bot` (async/await) and `asyncio`.
--   **Hybrid Interaction**: Telegram for commands/results, Gradio for large uploads.
 
 ## Key Files
 | File | Purpose |
 | :--- | :--- |
-| **`main.py`** | **Entry Point**. Contains `Application` setup, `queue_processor`, and Model initialization. |
-| **`config.py`** | **Configuration**. Manages Secrets (`os.environ`) and Bot Settings (Whisper model, VAD, timeouts). |
-| **`utils.py`** | **Utilities**. Logging, Time formatting, and **Gemini Summarization Logic**. |
-| **`bot_classes.py`**| **Data Structures**. `TranscriptionJob`, `JobManager`, `IdleMonitor`, `FilesHandler`. |
-| **`gradio_handler.py`** | **Web UI**. Handles large file uploads and queues them to `JobManager`. |
-| **`setup_uv.sh`** | **Installation**. Uses `uv` for ultra-fast dependency installation in Colab. |
+| **`start.py`** | **Smart Entry Point**. Environment detection and bot launcher. |
+| **`main.py`** | **Core Logic**. Telegram bot handlers and job worker. |
+| **`config.py`** | **Configuration**. Manages Secrets and Settings. |
+| **`utils.py`** | **Utilities**. Gemini Transcription & Summarization logic. |
+| **`bot_classes.py`**| **Data Structures**. `JobManager`, `FilesHandler` (with duration enforcement). |
+| **`setup_uv.sh`** | **Installation**. Smart multi-requirements installer using `uv`. |
 
 ## Critical Workflows
 
 ### 1. Startup & Initialization
--   **`main.post_init`**: Sends initial "Bot Online" message (with unique `STARTUP_MESSAGE_ID`).
--   **Background Tasks**: `initialize_models_background` and `initialize_gradio_background` run concurrently.
--   **Dynamic Update**: As services load, they **edit** the single `STARTUP_MESSAGE_ID` message instead of spamming new ones.
+-   **`start.py`**: Checks `torch.cuda` -> Sets mode -> Runs `main.py`.
+-   **`main.post_init`**: Adjusts idle timers (5x longer in Gemini mode) and notifies admins.
 
-### 2. Transcription Pipeline (`main.queue_processor`)
-1.  **Receive**: File via Telegram or Gradio -> Added to `JobManager` queue.
-2.  **Transcribe**: `faster-whisper` processes audio.
-3.  **Immediate Result**: Send "Done" message + `TS_...` (Transcript) file **immediately**.
-4.  **AI Summary**: Call `utils.summarize_text` (Gemini).
-5.  **Final Result**: Send `AI_...` (Summary) file when ready.
+### 2. Transcription Pipeline
+1.  **Receive**: `FilesHandler` checks limits (10 mins for Gemini mode).
+2.  **Transcribe**: 
+    - **WHISPER Mode**: Local processing via `faster-whisper`.
+    - **GEMINI Mode**: Cloud processing via Google Gemini File API.
+3.  **Immediate Result**: Send "Done" message + `TS_...` file.
+4.  **AI Summary**: Call `utils.summarize_text`.
+5.  **Final Result**: Send `AI_...` file.
 6.  **Cleanup**: Local files removed.
 
 ## Configuration (Environment Variables)
