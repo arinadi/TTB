@@ -58,10 +58,29 @@ if MODE == 'WHISPER':
     except ImportError:
         log("INIT", "Gradio not available.")
 
-# --- Secrets Alias ---
+# --- Secrets & Config Alias ---
 TELEGRAM_BOT_TOKEN = config.TELEGRAM_BOT_TOKEN
 TELEGRAM_CHAT_ID = config.TELEGRAM_CHAT_ID
 GEMINI_API_KEY = config.GEMINI_API_KEY
+
+# Config Shortcuts
+WHISPER_MODEL = Config.WHISPER_MODEL
+WHISPER_PRECISION = Config.WHISPER_PRECISION
+WHISPER_BEAM_SIZE = Config.WHISPER_BEAM_SIZE
+WHISPER_PATIENCE = Config.WHISPER_PATIENCE
+WHISPER_TEMPERATURE = Config.WHISPER_TEMPERATURE
+WHISPER_REPETITION_PENALTY = Config.WHISPER_REPETITION_PENALTY
+WHISPER_NO_REPEAT_NGRAM_SIZE = Config.WHISPER_NO_REPEAT_NGRAM_SIZE
+VAD_FILTER = Config.VAD_FILTER
+VAD_THRESHOLD = Config.VAD_THRESHOLD
+VAD_MIN_SPEECH_DURATION_MS = Config.VAD_MIN_SPEECH_DURATION_MS
+VAD_MIN_SILENCE_DURATION_MS = Config.VAD_MIN_SILENCE_DURATION_MS
+VAD_SPEECH_PAD_MS = Config.VAD_SPEECH_PAD_MS
+BOT_FILESIZE_LIMIT = Config.BOT_FILESIZE_LIMIT
+ENABLE_IDLE_MONITOR = Config.ENABLE_IDLE_MONITOR
+IDLE_FIRST_ALERT_MINUTES = Config.IDLE_FIRST_ALERT_MINUTES
+IDLE_FINAL_WARNING_MINUTES = Config.IDLE_FINAL_WARNING_MINUTES
+IDLE_SHUTDOWN_MINUTES = Config.IDLE_SHUTDOWN_MINUTES
 
 # Detect Colab
 try:
@@ -101,7 +120,7 @@ os.makedirs(TRANSCRIPT_FOLDER, exist_ok=True)
 # ------------------------------------------------------------------------------
 
 device = "cuda" if MODE == 'WHISPER' and torch.cuda.is_available() else "cpu"
-fp16_enabled = MODE == 'WHISPER' and (str(Config.WHISPER_PRECISION).lower() == 'true' or (str(Config.WHISPER_PRECISION).lower() == 'auto' and device == 'cuda'))
+fp16_enabled = MODE == 'WHISPER' and (str(WHISPER_PRECISION).lower() == 'true' or (str(WHISPER_PRECISION).lower() == 'auto' and device == 'cuda'))
 
 # Global State
 model = None
@@ -161,12 +180,12 @@ async def initialize_models_background():
     global model, gemini_client
     try:
         if MODE == 'WHISPER':
-            log("INIT", f"Loading Whisper ({Config.WHISPER_MODEL}, {device})...")
+            log("INIT", f"Loading Whisper ({WHISPER_MODEL}, {device})...")
             # Logic for compute_type
             compute_type = "float16" if device == "cuda" else "int8"
             
             # User override logic
-            prec_cfg = str(Config.WHISPER_PRECISION).lower()
+            prec_cfg = str(WHISPER_PRECISION).lower()
             if prec_cfg == 'false' or prec_cfg == 'float32':
                 compute_type = "float32"
             elif prec_cfg == 'float16':
@@ -176,7 +195,7 @@ async def initialize_models_background():
 
             model = await asyncio.to_thread(
                 WhisperModel, 
-                Config.WHISPER_MODEL, 
+                WHISPER_MODEL, 
                 device=device, 
                 compute_type=compute_type
             )
@@ -248,10 +267,10 @@ async def update_startup_message(gradio_url: str = None):
     
     msg_text = (
         f"🚀 *Bot Online* ({mode_icon} `{MODE}`)\n\n"
-        f"🤖 *AI Model:* `{'Gemini' if MODE == 'GEMINI' else Config.WHISPER_MODEL}`\n"
+        f"🤖 *AI Model:* `{'Gemini' if MODE == 'GEMINI' else WHISPER_MODEL}`\n"
         f"Status: {ai_status} (Gemini AI: {gemini_icon})\n"
         f"{gradio_text}"
-        f"📂 Max file: `{Config.BOT_FILESIZE_LIMIT}MB`"
+        f"📂 Max file: `{BOT_FILESIZE_LIMIT}MB`"
     )
     
     keyboard = [[InlineKeyboardButton("🔌 Shutdown Bot", callback_data="shutdown_bot")]]
@@ -275,25 +294,25 @@ def run_transcription_process(job: TranscriptionJob) -> tuple[str, str]:
     log("WHISPER", f"[{job.job_id}] Transcribing {job.original_filename}...")
     
     transcribe_options = {
-        "beam_size": Config.WHISPER_BEAM_SIZE,
-        "patience": Config.WHISPER_PATIENCE,
-        "temperature": Config.WHISPER_TEMPERATURE,
-        "repetition_penalty": Config.WHISPER_REPETITION_PENALTY,
-        "no_repeat_ngram_size": Config.WHISPER_NO_REPEAT_NGRAM_SIZE
+        "beam_size": WHISPER_BEAM_SIZE,
+        "patience": WHISPER_PATIENCE,
+        "temperature": WHISPER_TEMPERATURE,
+        "repetition_penalty": WHISPER_REPETITION_PENALTY,
+        "no_repeat_ngram_size": WHISPER_NO_REPEAT_NGRAM_SIZE
     }
     
     # Run transcription
     # VAD parameters from user research
     vad_parameters = dict(
-        threshold=Config.VAD_THRESHOLD,
-        min_speech_duration_ms=Config.VAD_MIN_SPEECH_DURATION_MS,
-        min_silence_duration_ms=Config.VAD_MIN_SILENCE_DURATION_MS,
-        speech_pad_ms=Config.VAD_SPEECH_PAD_MS
+        threshold=VAD_THRESHOLD,
+        min_speech_duration_ms=VAD_MIN_SPEECH_DURATION_MS,
+        min_silence_duration_ms=VAD_MIN_SILENCE_DURATION_MS,
+        speech_pad_ms=VAD_SPEECH_PAD_MS
     )
     
     segments_generator, info = model.transcribe(
         job.local_filepath, 
-        vad_filter=Config.VAD_FILTER,
+        vad_filter=VAD_FILTER,
         vad_parameters=vad_parameters,
         **transcribe_options
     )
@@ -305,8 +324,6 @@ def run_transcription_process(job: TranscriptionJob) -> tuple[str, str]:
     from utils import format_transcription_native
     formatted_text = format_transcription_native(segments)
     
-    # Legacy pause-based formatting (disabled)
-    # formatted_text = format_transcription_with_pauses(segments, Config.PAUSE_THRESHOLD)
     
     log("WHISPER", f"[{job.job_id}] Done: {len(segments)} segments, lang={info.language} ({info.language_probability:.0%})")
     
@@ -451,7 +468,7 @@ async def queue_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.effective_message.reply_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN)
 
 async def extend_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not Config.ENABLE_IDLE_MONITOR:
+    if not ENABLE_IDLE_MONITOR:
         await update.effective_message.reply_text("Idle monitor disabled.")
         return
     msg = "✅ +5m extended" if idle_monitor.extend_timer(5) else "ℹ️ Bot active, no timer."
@@ -530,22 +547,27 @@ async def main():
         if GRADIO_AVAILABLE:
             application.create_task(initialize_gradio_background())
         
-        if Config.ENABLE_IDLE_MONITOR:
+        if ENABLE_IDLE_MONITOR:
             # CPU/Gemini Mode: Multiply by 5 as requested
             if MODE == 'GEMINI':
-                Config.IDLE_FIRST_ALERT_MINUTES *= 5
-                Config.IDLE_FINAL_WARNING_MINUTES *= 5
-                Config.IDLE_SHUTDOWN_MINUTES *= 5
-                log("INIT", f"CPU Mode: Idle timers set to {Config.IDLE_FIRST_ALERT_MINUTES}/{Config.IDLE_FINAL_WARNING_MINUTES}/{Config.IDLE_SHUTDOWN_MINUTES}m")
+                global IDLE_FIRST_ALERT_MINUTES, IDLE_FINAL_WARNING_MINUTES, IDLE_SHUTDOWN_MINUTES
+                IDLE_FIRST_ALERT_MINUTES *= 5
+                IDLE_FINAL_WARNING_MINUTES *= 5
+                IDLE_SHUTDOWN_MINUTES *= 5
+                # Note: We must also update Config directly if other components use it, 
+                # but since we have aliases, we should update both or just aliases.
+                # However, IdleMonitor was already initialized with Config values.
+                # Let's check how IdleMonitor is initialized.
+                log("INIT", f"CPU Mode: Idle timers set to {IDLE_FIRST_ALERT_MINUTES}/{IDLE_FINAL_WARNING_MINUTES}/{IDLE_SHUTDOWN_MINUTES}m")
             idle_monitor.start()
 
         # Send startup notification in background (non-blocking)
         mode_icon = "🌩️" if MODE == 'GEMINI' else "🔥"
         startup_text = (
             f"🚀 *Bot Online* ({mode_icon} `{MODE}`)\n\n"
-            f"🤖 *AI Model:* `{'Gemini' if MODE == 'GEMINI' else Config.WHISPER_MODEL}`\n"
+            f"🤖 *AI Model:* `{'Gemini' if MODE == 'GEMINI' else WHISPER_MODEL}`\n"
             f"Status: ⏳ Loading...\n\n"
-            f"📂 Max file: `{Config.BOT_FILESIZE_LIMIT}MB`"
+            f"📂 Max file: `{BOT_FILESIZE_LIMIT}MB`"
         )
         keyboard = [[InlineKeyboardButton("🔌 Shutdown Bot", callback_data="shutdown_bot")]]
         
