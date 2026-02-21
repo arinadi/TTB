@@ -75,7 +75,7 @@ async def summarize_text(transcript: str, gemini_client) -> str:
         response = await asyncio.to_thread(
             gemini_client.models.generate_content,
             model=PRIMARY_MODEL,
-            contents=prompt
+            contents=[prompt, transcript]
         )
         log("GEMINI", f"Summary received ({len(response.text)} chars)")
         return response.text
@@ -86,7 +86,7 @@ async def summarize_text(transcript: str, gemini_client) -> str:
             response = await asyncio.to_thread(
                 gemini_client.models.generate_content,
                 model=FALLBACK_MODEL,
-                contents=prompt
+                contents=[prompt, transcript]
             )
             log("GEMINI", f"Fallback summary received ({len(response.text)} chars)")
             return response.text
