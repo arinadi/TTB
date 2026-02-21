@@ -1,6 +1,7 @@
 from datetime import datetime
 import asyncio
 import time
+import os
 import config
 
 # --- Logging Utilities (Merged from log_utils.py) ---
@@ -95,7 +96,8 @@ async def summarize_text(transcript: str, gemini_client) -> str:
 
 def format_duration(seconds: float) -> str:
     """Converts a duration in seconds to a human-readable 'Xm XXs' format."""
-    if not isinstance(seconds, (int, float)) or seconds < 0: return "N/A"
+    if not isinstance(seconds, (int, float)) or seconds < 0:
+        return "N/A"
     minutes, remaining_seconds = divmod(int(seconds), 60)
     return f"{minutes}m {remaining_seconds:02d}s"
 

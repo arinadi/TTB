@@ -406,7 +406,8 @@ class FilesHandler:
 
             for root, _, files in os.walk(extract_dir):
                 for filename in files:
-                    if filename.startswith('.'): continue
+                    if filename.startswith('.'):
+                        continue
                     source_path = os.path.join(root, filename)
                     dest_path = os.path.join(self.upload_folder, f"{uuid.uuid4().hex}_{secure_filename(filename)}")
                     shutil.move(source_path, dest_path)
@@ -419,5 +420,7 @@ class FilesHandler:
         except Exception as e:
             await status_message.edit_text(f"❌ Error while extracting `{zip_name}`: `{e}`", parse_mode=ParseMode.MARKDOWN)
         finally:
-            if os.path.exists(extract_dir): shutil.rmtree(extract_dir)
-            if os.path.exists(zip_path): os.remove(zip_path)
+            if extract_dir and os.path.exists(extract_dir):
+                shutil.rmtree(extract_dir)
+            if zip_path and os.path.exists(zip_path):
+                os.remove(zip_path)

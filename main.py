@@ -357,7 +357,8 @@ async def queue_processor():
             else:
                 transcript_text, detected_language = await asyncio.to_thread(run_transcription_process, job)
             
-            if job.status == 'cancelled': raise asyncio.CancelledError("Job cancelled during transcription.")
+            if job.status == 'cancelled':
+                raise asyncio.CancelledError("Job cancelled during transcription.")
 
             base_name = os.path.splitext(job.original_filename)[0]
             safe_name = secure_filename(base_name)[:50]
@@ -386,7 +387,8 @@ async def queue_processor():
                     log("JOB", f"[{job.job_id}] Generating AI summary...")
                     summary_text = await summarize_text(transcript_text, gemini_client)
                     
-                    if job.status == 'cancelled': raise asyncio.CancelledError("Job cancelled during summarization.")
+                    if job.status == 'cancelled':
+                        raise asyncio.CancelledError("Job cancelled during summarization.")
                     
                     su_filename = f"{SUMMARY_FILENAME_PREFIX}_({duration_str.replace(' ', '')})_{safe_name}.txt"
                     su_filepath = os.path.join(TRANSCRIPT_FOLDER, su_filename)

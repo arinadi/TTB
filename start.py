@@ -1,7 +1,6 @@
 import os
 import sys
 import subprocess
-import time
 
 def check_cuda():
     """Checks if CUDA is available and faster-whisper is installed."""
@@ -11,7 +10,7 @@ def check_cuda():
             return False, "CUDA not available"
         
         # Check faster-whisper
-        import faster_whisper
+        import faster_whisper  # noqa: F401
         return True, "GPU/Whisper Ready"
     except ImportError:
         return False, "Dependencies missing (torch/faster-whisper)"
@@ -35,8 +34,8 @@ def main():
         print(f"⚠️ {gpu_reason}. Transcription Mode: GEMINI (CPU)")
         # Check if basic dependencies like google-genai are present
         try:
-            import google.genai
-            import telegram
+            import google.genai  # noqa: F401
+            import telegram  # noqa: F401
         except ImportError:
             print("❌ Basic dependencies missing. Running setup_uv.sh...")
             try:
