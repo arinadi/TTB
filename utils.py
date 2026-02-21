@@ -24,7 +24,7 @@ def log(category: str, message: str):
 
 # --- AI & Formatting Utilities ---
 
-async def summarize_text(transcript: str, gemini_client) -> str:
+async def summarize_text(transcript: str, gemini_client, mode: str = 'GEMINI') -> str:
     """Generates a journalist-friendly summary of the transcript using the Gemini API in Indonesian."""
     if not gemini_client:
         return "Summarization disabled: Gemini API key not configured or client failed to load."
@@ -65,6 +65,20 @@ async def summarize_text(transcript: str, gemini_client) -> str:
         "(Kosongkan jika tidak ada)\n\n"
         "-----\n"
     )
+
+    # WHISPER mode: append RETOUCH TRANSCRIPT section
+    if mode == 'WHISPER':
+        prompt += (
+            "\n\n"
+            "-----\n\n"
+            "RETOUCH TRANSCRIPT:\n"
+            "! WARNING: Bagian ini adalah hasil perbaikan AI dan mengandung asumsi.\n\n"
+            "[Perbaiki typo, kesalahan penulisan, serta tanda baca (seperti tanda tanya) pada transkrip. "
+            "Berikan jeda baris (enter) di setiap akhir paragraf agar teks lebih mudah dibaca. "
+            "Pastikan urutan kalimat dan struktur asli teks tetap sama.]\n\n"
+            "--- TRANSKRIP ASLI [JANGAN KIRIM KEMBALI] ---\n"
+            f"```\n{transcript}\n```"
+        )
     
     # Gemini models
     PRIMARY_MODEL = "gemini-3-flash-preview"     # Use newer flash as primary

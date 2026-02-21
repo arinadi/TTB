@@ -385,7 +385,7 @@ async def queue_processor():
             if gemini_client:
                 try:
                     log("JOB", f"[{job.job_id}] Generating AI summary...")
-                    summary_text = await summarize_text(transcript_text, gemini_client)
+                    summary_text = await summarize_text(transcript_text, gemini_client, mode=MODE)
                     
                     if job.status == 'cancelled':
                         raise asyncio.CancelledError("Job cancelled during summarization.")
