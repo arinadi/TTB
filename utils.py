@@ -83,13 +83,17 @@ async def summarize_text(transcript: str, gemini_client, mode: str = 'GEMINI') -
     # Gemini models
     PRIMARY_MODEL = "gemini-3-flash-preview"     # Use newer flash as primary
     FALLBACK_MODEL = "gemini-2.5-flash"
+
+    # WHISPER: transcript already embedded in prompt (RETOUCH section)
+    # GEMINI: pass transcript separately to avoid embedding it in the prompt
+    contents = prompt if mode == 'WHISPER' else [prompt, transcript]
     
     try:
         log("GEMINI", f"Requesting summary ({len(transcript)} chars) with {PRIMARY_MODEL}...")
         response = await asyncio.to_thread(
             gemini_client.models.generate_content,
             model=PRIMARY_MODEL,
-            contents=[prompt, transcript]
+            contents=contents
         )
         log("GEMINI", f"Summary received ({len(response.text)} chars)")
         return response.text
@@ -100,7 +104,7 @@ async def summarize_text(transcript: str, gemini_client, mode: str = 'GEMINI') -
             response = await asyncio.to_thread(
                 gemini_client.models.generate_content,
                 model=FALLBACK_MODEL,
-                contents=[prompt, transcript]
+                contents=contents
             )
             log("GEMINI", f"Fallback summary received ({len(response.text)} chars)")
             return response.text
