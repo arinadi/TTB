@@ -24,16 +24,20 @@ def log(category: str, message: str):
 
 # --- AI & Formatting Utilities ---
 
-async def summarize_text(transcript: str, gemini_client, mode: str = 'GEMINI') -> str:
-    """Generates a journalist-friendly summary of the transcript using the Gemini API in Indonesian."""
-    if not gemini_client:
-        return "Summarization disabled: Gemini API key not configured or client failed to load."
-
-    today_date = datetime.now().strftime("%d %B %Y")
-    
+def build_journalist_summary_prompt(today_date: str, file_metadata: str | None = None) -> str:
+    """Builder for the summarization prompt."""
     prompt = (
         "Anda adalah AI peringkas untuk jurnalis. "
         "Ringkas transkrip berikut ke dalam Bahasa Indonesia dengan format Plain Text.\n\n"
+    )
+    
+    if file_metadata:
+        prompt += (
+            "INFORMASI METADATA FILE AUDIO (Sebagai Konteks Tambahan):\n"
+            f"{file_metadata}\n\n"
+        )
+        
+    prompt += (
         "ATURAN PENTING:\n"
         "- JANGAN mengarang atau berasumsi informasi yang tidak ada di transkrip.\n"
         "- Jika informasi tidak ditemukan, KOSONGKAN bagian tersebut atau tulis '-'.\n"
@@ -65,6 +69,17 @@ async def summarize_text(transcript: str, gemini_client, mode: str = 'GEMINI') -
         "(Kosongkan jika tidak ada)\n\n"
         "-----\n"
     )
+    return prompt
+
+async def summarize_text(transcript: str, gemini_client, mode: str = 'GEMINI') -> str:
+    """Generates a journalist-friendly summary of the transcript using the Gemini API in Indonesian."""
+    if not gemini_client:
+        return "Summarization disabled: Gemini API key not configured or client failed to load."
+
+    today_date = datetime.now().strftime("%d %B %Y")
+    
+    prompt = build_journalist_summary_prompt(today_date)
+
 
     # WHISPER mode: append RETOUCH TRANSCRIPT section
     if mode == 'WHISPER':
@@ -168,18 +183,19 @@ def format_transcription_with_pauses(segments: list, pause_thresh: float = 2.0) 
         return ""
 
     # 2. Build blocks based on pauses
-    blocks = []
-    current_block_start = clean_segments[0]['start']
-    current_text_parts = [clean_segments[0]['text']]
+    blocks: list[str] = []
+    current_block_start = float(clean_segments[0]['start'])
+    current_text_parts = [str(clean_segments[0]['text'])]
     last_end = clean_segments[0]['end']
 
-    for seg in clean_segments[1:]:
-        gap = seg['start'] - last_end
+    for i in range(1, len(clean_segments)):
+        seg = clean_segments[i]
+        gap = float(seg['start']) - float(last_end)
         
         if gap > pause_thresh:
             # Commit previous block
-            timestamp = format_timestamp(current_block_start)
-            block_content = " ".join(current_text_parts)
+            timestamp = format_timestamp(float(current_block_start))
+            block_content = " ".join(str(p) for p in current_text_parts)
             blocks.append(f"{timestamp}\n{block_content}")
             
             # Start new block
@@ -193,8 +209,8 @@ def format_transcription_with_pauses(segments: list, pause_thresh: float = 2.0) 
 
     # 3. Commit final block
     if current_text_parts:
-        timestamp = format_timestamp(current_block_start)
-        block_content = " ".join(current_text_parts)
+        timestamp = format_timestamp(float(current_block_start))
+        block_content = " ".join(str(p) for p in current_text_parts)
         blocks.append(f"{timestamp}\n{block_content}")
 
     return "\n\n".join(blocks)

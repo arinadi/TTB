@@ -7,15 +7,16 @@ import time
 import subprocess
 from pathlib import Path
 from datetime import datetime
-from google import genai
-from google.genai import types
+from google import genai  # type: ignore
+from google.genai import types  # type: ignore
+from utils import build_journalist_summary_prompt  # type: ignore
 
 # --- Configuration ---
 # Detect environment
 IN_COLAB = 'google.colab' in sys.modules
 
 if IN_COLAB:
-    from google.colab import userdata, files
+    from google.colab import userdata, files  # type: ignore
     try:
         API_KEY = userdata.get('GEMINI_API_KEY')
     except Exception:
@@ -78,42 +79,9 @@ def wait_for_files_active(file):
     print("\n...file ready")
     return file
 
-def generate_summary(transcript_text, today_date):
-    """Generates a summary based on the transcript."""
-    prompt = (
-        "Anda adalah AI peringkas untuk jurnalis. "
-        "Ringkas transkrip berikut ke dalam Bahasa Indonesia dengan format Plain Text.\n\n"
-        "ATURAN PENTING:\n"
-        "- JANGAN mengarang atau berasumsi informasi yang tidak ada di transkrip.\n"
-        "- Jika informasi tidak ditemukan, KOSONGKAN bagian tersebut atau tulis '-'.\n"
-        "- Hanya tulis informasi yang JELAS terlihat di transkrip.\n"
-        f"- Jika tanggal tidak disebutkan di transkrip, gunakan: {today_date}\n\n"
-        "FORMAT OUTPUT:\n\n"
-        "FAKTA BERITA\n"
-        f"Tanggal: [tanggal dari transkrip atau {today_date}]\n\n"
-        "LEAD (Paragraf Pembuka):\n"
-        "[1-2 kalimat inti berita: siapa, apa, kapan, dimana]\n\n"
-        "BODY:\n"
-        "A. [Topik/Angle 1]\n"
-        "   - Detail penting\n"
-        "   - Kutipan pendukung (jika ada)\n\n"
-        "B. [Topik/Angle 2]\n"
-        "   - Detail penting\n\n"
-        "C. [Topik/Angle 3, jika ada]\n"
-        "   - Detail penting\n\n"
-        "D. [Topik/Angle 4, jika ada]\n"
-        "   - Detail penting\n\n"
-        "NARASUMBER:\n"
-        "1. [Nama] - [Jabatan] - \"[Kutipan kunci]\"\n"
-        "(Kosongkan jika tidak ada narasumber jelas)\n\n"
-        "DATA PENDUKUNG:\n"
-        "- [Angka/statistik dari transkrip]\n"
-        "(Kosongkan jika tidak ada data)\n\n"
-        "PERLU KLARIFIKASI:\n"
-        "- [Hal yang tidak jelas atau perlu dicek]\n"
-        "(Kosongkan jika tidak ada)\n\n"
-        "-----\n"
-    )
+def generate_summary(transcript_text, file_metadata, today_date):
+    """Generates a summary based on the transcript and file metadata."""
+    prompt = build_journalist_summary_prompt(today_date, file_metadata)
     
     print(f"Sending Summary Request to {MODEL_NAME}...")
     try:
@@ -138,6 +106,15 @@ def transcribe_audio(audio_path):
     
     print(f"\nProcessing: {audio_path}")
     today_date = datetime.now().strftime("%Y-%m-%d")
+
+    try:
+        file_name = os.path.basename(audio_path)
+        file_stat = os.stat(audio_path)
+        file_size_mb = file_stat.st_size / (1024 * 1024)
+        file_mtime = datetime.fromtimestamp(file_stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S")
+        file_metadata_text = f"Nama File: {file_name}\nUkuran: {file_size_mb:.2f} MB\nTanggal Dimodifikasi (File): {file_mtime}"
+    except Exception:
+        file_metadata_text = f"Nama File: {os.path.basename(audio_path)}"
 
     # 0. Check Duration
     duration = get_audio_duration(audio_path)
@@ -207,7 +184,7 @@ def transcribe_audio(audio_path):
 
         # 4. Generate Summary (Step 2)
         print("Generating Jurnalis Summary...")
-        summary_text = generate_summary(transcript_text, today_date)
+        summary_text = generate_summary(transcript_text, file_metadata_text, today_date)
 
         # Save Summary (AI)
         ai_filename = os.path.join(OUTPUT_DIR, f"AI_{Path(audio_path).stem}.txt")
@@ -218,9 +195,9 @@ def transcribe_audio(audio_path):
     except Exception as e:
         print(f"\n[ERROR] Processing Failed: {e}")
         # Try to print more details about the exception if available
-        if hasattr(e, 'response'):
-             print(f"Response Status: {e.response.status_code}")
-             print(f"Response Body: {e.response.text}")
+        if hasattr(e, 'response') and getattr(e, 'response', None) is not None:
+             print(f"Response Status: {getattr(e, 'response').status_code}")
+             print(f"Response Body: {getattr(e, 'response').text}")
 
 if __name__ == "__main__":
     # Ensure pip install runs via user check
